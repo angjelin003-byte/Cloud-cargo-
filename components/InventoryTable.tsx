@@ -1,5 +1,6 @@
 'use client';
 
+import { memo, useMemo } from 'react';
 import {
   ArrowLeftRight,
   Barcode,
@@ -37,7 +38,7 @@ const STATUS_TABS: { value: StockStatus | 'all'; label: string }[] = [
   { value: 'out', label: 'Out' },
 ];
 
-export function InventoryTable({
+export const InventoryTable = memo(function InventoryTable({
   materials,
   sections,
   filters,
@@ -52,7 +53,10 @@ export function InventoryTable({
   onDelete,
   onOpenAddMaterial,
 }: InventoryTableProps) {
-  const sectionMap = new Map(sections.map((s) => [s.id, s]));
+  const sectionMap = useMemo(
+    () => new Map(sections.map((s) => [s.id, s])),
+    [sections]
+  );
   const hasActiveFilter =
     filters.query.trim() !== '' || filters.sectionId !== 'all' || filters.status !== 'all';
 
@@ -344,4 +348,4 @@ export function InventoryTable({
       )}
     </div>
   );
-}
+});

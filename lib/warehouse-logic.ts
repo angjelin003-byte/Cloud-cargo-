@@ -286,6 +286,8 @@ export function applyStockDelta(
   };
 }
 
+const TEXT_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
 /**
  * Filters and sorts warehouse materials against search query (including tracking and section codes),
  * section selection, and stock status.
@@ -295,34 +297,38 @@ export function filterAndSortMaterials(
   sections: Section[],
   filters: MaterialFilters
 ): Material[] {
-  const sectionMap = new Map(sections.map((s) => [s.id, s]));
   const q = filters.query.trim().toLowerCase();
+  const sectionMap = q ? new Map(sections.map((s) => [s.id, s])) : null;
 
   const filtered = materials.filter((item) => {
     if (filters.sectionId !== 'all' && item.sectionId !== filters.sectionId) {
       return false;
     }
 
-    const status = getStockStatus(item.quantity, item.minThreshold);
-    if (filters.status !== 'all' && status !== filters.status) {
-      return false;
+    if (filters.status !== 'all') {
+      const status = getStockStatus(item.quantity, item.minThreshold);
+      if (status !== filters.status) {
+        return false;
+      }
     }
 
     if (q) {
-      const sec = sectionMap.get(item.sectionId);
-      const haystack = [
-        item.trackingCode,
-        item.name,
-        item.category,
-        item.lotNumber,
-        sec?.code ?? '',
-        sec?.name ?? '',
-      ]
-        .join(' ')
-        .toLowerCase();
-      if (!haystack.includes(q)) {
-        return false;
+      if (
+        item.trackingCode.toLowerCase().includes(q) ||
+        item.name.toLowerCase().includes(q) ||
+        item.category.toLowerCase().includes(q) ||
+        item.lotNumber.toLowerCase().includes(q)
+      ) {
+        return true;
       }
+      const sec = sectionMap?.get(item.sectionId);
+      if (
+        sec &&
+        (sec.code.toLowerCase().includes(q) || sec.name.toLowerCase().includes(q))
+      ) {
+        return true;
+      }
+      return false;
     }
 
     return true;
@@ -332,14 +338,15 @@ export function filterAndSortMaterials(
   return [...filtered].sort((a, b) => {
     switch (filters.sortBy) {
       case 'trackingCode':
-        return a.trackingCode.localeCompare(b.trackingCode) * dir;
+        return TEXT_COLLATOR.compare(a.trackingCode, b.trackingCode) * dir;
       case 'name':
-        return a.name.localeCompare(b.name) * dir;
+        return TEXT_COLLATOR.compare(a.name, b.name) * dir;
       case 'quantity':
         return (a.quantity - b.quantity) * dir;
       case 'updatedAt':
       default:
-        return a.updatedAt.localeCompare(b.updatedAt) * dir;
+        if (a.updatedAt === b.updatedAt) return 0;
+        return (a.updatedAt < b.updatedAt ? -1 : 1) * dir;
     }
   });
 }

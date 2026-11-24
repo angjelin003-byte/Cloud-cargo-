@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import type { WarehouseMetrics } from '@/lib/warehouse-logic';
 
 interface MetricsStripProps {
@@ -8,7 +9,7 @@ interface MetricsStripProps {
   onFilterAlerts: () => void;
 }
 
-export function MetricsStrip({
+export const MetricsStrip = memo(function MetricsStrip({
   metrics,
   activeStatusFilter,
   onFilterAlerts,
@@ -59,4 +60,4 @@ export function MetricsStrip({
       </button>
     </section>
   );
-}
+});

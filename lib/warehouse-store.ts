@@ -22,13 +22,16 @@ import {
   type SectionInput,
 } from './warehouse-logic';
 
-type Subscriber = (event: StreamEvent) => void;
+type Subscriber = (chunk: Uint8Array) => void;
 
 interface WarehouseHub {
   state: WarehouseState;
   subscribers: Set<Subscriber>;
   sessions: Map<string, ActiveSession>;
   initialized: boolean;
+  persistTimer: ReturnType<typeof setTimeout> | null;
+  persisting: boolean;
+  persistQueued: boolean;
 }
 
 declare global {
@@ -37,6 +40,11 @@ declare global {
 
 const DATA_DIR = path.join(process.cwd(), '.warehouse-data');
 const DATA_FILE = path.join(DATA_DIR, 'store.json');
+const sseEncoder = new TextEncoder();
+
+export function encodeSseEvent(event: StreamEvent): Uint8Array {
+  return sseEncoder.encode(`data: ${JSON.stringify(event)}\n\n`);
+}
 
 function createSeedState(): WarehouseState {
   const baseTime = '2026-11-23T08:30:00.000Z';
@@ -351,19 +359,47 @@ function loadStateFromDisk(): WarehouseState {
     // Fall back to fresh seed state on unreadable file
   }
   const seed = createSeedState();
-  persistStateToDisk(seed);
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(DATA_FILE, JSON.stringify(seed), 'utf-8');
+  } catch {
+    // Non-fatal in read-only environments
+  }
   return seed;
 }
 
-function persistStateToDisk(state: WarehouseState): void {
+async function flushPersistQueue(): Promise<void> {
+  const hub = getHub();
+  if (hub.persisting) {
+    hub.persistQueued = true;
+    return;
+  }
+  hub.persisting = true;
   try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    const tmpFile = `${DATA_FILE}.${process.pid}.tmp`;
-    fs.writeFileSync(tmpFile, JSON.stringify(state, null, 2), 'utf-8');
-    fs.renameSync(tmpFile, DATA_FILE);
+    do {
+      hub.persistQueued = false;
+      const serialized = JSON.stringify(hub.state);
+      await fs.promises.mkdir(DATA_DIR, { recursive: true });
+      const tmpFile = `${DATA_FILE}.${process.pid}.tmp`;
+      await fs.promises.writeFile(tmpFile, serialized, 'utf-8');
+      await fs.promises.rename(tmpFile, DATA_FILE);
+    } while (hub.persistQueued);
   } catch {
     // Non-fatal in read-only environments; in-memory state remains authoritative
+  } finally {
+    hub.persisting = false;
   }
+}
+
+function scheduleDiskPersist(): void {
+  const hub = getHub();
+  if (hub.persistTimer) {
+    clearTimeout(hub.persistTimer);
+  }
+  hub.persistTimer = setTimeout(() => {
+    hub.persistTimer = null;
+    void flushPersistQueue();
+  }, 50);
 }
 
 function getHub(): WarehouseHub {
@@ -373,6 +409,9 @@ function getHub(): WarehouseHub {
       subscribers: new Set<Subscriber>(),
       sessions: new Map<string, ActiveSession>(),
       initialized: true,
+      persistTimer: null,
+      persisting: false,
+      persistQueued: false,
     };
   }
   return globalThis.__kargobinHub;
@@ -388,9 +427,11 @@ export function getWarehouseSnapshot(): WarehouseSnapshotPayload {
 
 function broadcast(event: StreamEvent): void {
   const hub = getHub();
+  if (hub.subscribers.size === 0) return;
+  const chunk = encodeSseEvent(event);
   for (const sub of hub.subscribers) {
     try {
-      sub(event);
+      sub(chunk);
     } catch {
       hub.subscribers.delete(sub);
     }
@@ -402,11 +443,11 @@ export function subscribeToStream(
   sessionInfo?: { clientId: string; operatorId: string }
 ): () => void {
   const hub = getHub();
-  hub.subscribers.add(subscriber);
 
   if (sessionInfo?.clientId) {
     const operator =
-      hub.state.operators.find((o) => o.id === sessionInfo.operatorId) ??
+      hub.state.operators.find((o) => o.id === sessionInfo.operatorId && o.active) ??
+      hub.state.operators.find((o) => o.active) ??
       hub.state.operators[0];
     if (operator) {
       hub.sessions.set(sessionInfo.clientId, {
@@ -423,6 +464,8 @@ export function subscribeToStream(
     }
   }
 
+  hub.subscribers.add(subscriber);
+
   return () => {
     hub.subscribers.delete(subscriber);
     if (sessionInfo?.clientId && hub.sessions.has(sessionInfo.clientId)) {
@@ -433,6 +476,34 @@ export function subscribeToStream(
       });
     }
   };
+}
+
+export function updateSessionOperator(
+  clientId: string,
+  operatorId: string
+): ActiveSession[] {
+  const hub = getHub();
+  const operator =
+    hub.state.operators.find((o) => o.id === operatorId && o.active) ??
+    hub.state.operators.find((o) => o.active) ??
+    hub.state.operators[0];
+  if (clientId && operator) {
+    const existing = hub.sessions.get(clientId);
+    hub.sessions.set(clientId, {
+      clientId,
+      operatorId: operator.id,
+      operatorName: operator.name,
+      operatorRole: operator.role,
+      connectedAt: existing?.connectedAt ?? new Date().toISOString(),
+    });
+    const activeSessions = Array.from(hub.sessions.values());
+    broadcast({
+      type: 'presence:update',
+      activeSessions,
+    });
+    return activeSessions;
+  }
+  return Array.from(hub.sessions.values());
 }
 
 function resolveOperator(operatorId?: string): Operator {
@@ -454,7 +525,7 @@ function commitMutation(
     version: hub.state.version + 1,
     movements: nextState.movements.slice(0, 150),
   };
-  persistStateToDisk(hub.state);
+  scheduleDiskPersist();
   const activeSessions = Array.from(hub.sessions.values());
   broadcast({
     type: 'state:sync',

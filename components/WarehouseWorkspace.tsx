@@ -1,6 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type {
   ActiveSession,
   Material,
@@ -97,6 +105,17 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
   } | null>(null);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clientIdRef = useRef<string>('');
+  const activeOperatorIdRef = useRef<string>(activeOperatorId);
+
+  useEffect(() => {
+    activeOperatorIdRef.current = activeOperatorId;
+  }, [activeOperatorId]);
+
+  useEffect(() => {
+    return () => {
+      if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    };
+  }, []);
 
   const showNotice = useCallback((tone: 'info' | 'error', text: string) => {
     setNotice({ tone, text });
@@ -106,7 +125,7 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
     }, 4500);
   }, []);
 
-  // Connect real-time SSE stream with per-tab sessionStorage identity and auto-reconnect
+  // Connect real-time SSE stream once per tab with per-tab sessionStorage identity and auto-reconnect
   useEffect(() => {
     if (!clientIdRef.current) {
       let storedClient = sessionStorage.getItem('kargobin_client_id');
@@ -130,7 +149,7 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
       es = new EventSource(
         `/api/stream?clientId=${encodeURIComponent(
           clientIdRef.current
-        )}&operatorId=${encodeURIComponent(activeOperatorId)}`
+        )}&operatorId=${encodeURIComponent(activeOperatorIdRef.current)}`
       );
 
       es.onopen = () => {
@@ -145,7 +164,9 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
             setState(payload.state);
             setActiveSessions(payload.activeSessions);
           } else if (payload.type === 'state:sync') {
-            setState(payload.state);
+            setState((prev) =>
+              payload.state.version >= prev.version ? payload.state : prev
+            );
             setActiveSessions(payload.activeSessions);
             if (payload.lastEvent?.summary) {
               showNotice('info', payload.lastEvent.summary);
@@ -175,11 +196,12 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
       if (retryTimer) clearTimeout(retryTimer);
       es?.close();
     };
-  }, [activeOperatorId, showNotice]);
+  }, [showNotice]);
 
   const activeOperator = useMemo(
     () =>
-      state.operators.find((o) => o.id === activeOperatorId) ??
+      state.operators.find((o) => o.id === activeOperatorId && o.active) ??
+      state.operators.find((o) => o.active) ??
       state.operators[0] ??
       null,
     [state.operators, activeOperatorId]
@@ -190,9 +212,19 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
     [state.materials, state.sections]
   );
 
+  const deferredQuery = useDeferredValue(filters.query);
+
+  const deferredFilters = useMemo<MaterialFilters>(
+    () => ({
+      ...filters,
+      query: deferredQuery,
+    }),
+    [filters, deferredQuery]
+  );
+
   const filteredMaterials = useMemo(
-    () => filterAndSortMaterials(state.materials, state.sections, filters),
-    [state.materials, state.sections, filters]
+    () => filterAndSortMaterials(state.materials, state.sections, deferredFilters),
+    [state.materials, state.sections, deferredFilters]
   );
 
   const activeSection = useMemo(
@@ -200,139 +232,175 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
     [state.sections, filters.sectionId]
   );
 
-  function handleSwitchOperator(nextOpId: string) {
-    writeOperatorStorage(nextOpId);
-    const nextOp = state.operators.find((o) => o.id === nextOpId);
-    if (nextOp) {
-      showNotice('info', `Switched operator to ${nextOp.name} (${nextOp.role})`);
-    }
-  }
-
-  function applySnapshot(data: WarehouseSnapshotPayload) {
-    setState(data.state);
+  const applySnapshot = useCallback((data: WarehouseSnapshotPayload) => {
+    setState((prev) => (data.state.version >= prev.version ? data.state : prev));
     setActiveSessions(data.activeSessions);
-  }
+  }, []);
 
-  async function handleQuickDelta(material: Material, delta: number) {
-    setBusyMaterialId(material.id);
-    try {
-      const res = await fetch('/api/materials', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'stock',
-          id: material.id,
-          mode: delta > 0 ? 'INBOUND' : 'OUTBOUND',
-          delta,
-          operatorId: activeOperator?.id,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showNotice('error', data.error || 'Failed to update stock.');
-        return;
+  const handleSwitchOperator = useCallback(
+    (nextOpId: string) => {
+      writeOperatorStorage(nextOpId);
+      const nextOp = state.operators.find((o) => o.id === nextOpId);
+      if (nextOp) {
+        showNotice('info', `Switched operator to ${nextOp.name} (${nextOp.role})`);
       }
-      applySnapshot(data);
-    } catch {
-      showNotice('error', 'Network error while updating stock.');
-    } finally {
-      setBusyMaterialId(null);
-    }
-  }
-
-  async function handleSaveMaterial(payload: {
-    id?: string;
-    trackingCode: string;
-    name: string;
-    category: string;
-    sectionId: string;
-    quantity: number;
-    unit: string;
-    minThreshold: number;
-    lotNumber: string;
-  }): Promise<{ ok: boolean; error?: string }> {
-    try {
-      const isEdit = Boolean(payload.id);
-      const res = await fetch('/api/materials', {
-        method: isEdit ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...payload,
-          operatorId: activeOperator?.id,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        return { ok: false, error: data.error || 'Failed to save material.' };
+      if (clientIdRef.current) {
+        void fetch('/api/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clientId: clientIdRef.current,
+            operatorId: nextOpId,
+          }),
+        })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data: { activeSessions?: ActiveSession[] } | null) => {
+            if (data?.activeSessions) {
+              setActiveSessions(data.activeSessions);
+            }
+          })
+          .catch(() => {
+            // Presence sync will recover on next heartbeat/reconnect
+          });
       }
-      applySnapshot(data);
-      return { ok: true };
-    } catch {
-      return { ok: false, error: 'Network error while saving material.' };
-    }
-  }
+    },
+    [state.operators, showNotice]
+  );
 
-  async function handleAdjustOrTransfer(payload: {
-    id: string;
-    mode: 'INBOUND' | 'OUTBOUND' | 'TRANSFER' | 'ADJUST';
-    delta: number;
-    targetSectionId?: string;
-    note: string;
-  }): Promise<{ ok: boolean; error?: string }> {
-    try {
-      const res = await fetch('/api/materials', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'stock',
-          ...payload,
-          operatorId: activeOperator?.id,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        return { ok: false, error: data.error || 'Failed to update stock.' };
+  const activeOpId = activeOperator?.id;
+
+  const handleQuickDelta = useCallback(
+    async (material: Material, delta: number) => {
+      setBusyMaterialId(material.id);
+      try {
+        const res = await fetch('/api/materials', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'stock',
+            id: material.id,
+            mode: delta > 0 ? 'INBOUND' : 'OUTBOUND',
+            delta,
+            operatorId: activeOpId,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showNotice('error', data.error || 'Failed to update stock.');
+          return;
+        }
+        applySnapshot(data);
+      } catch {
+        showNotice('error', 'Network error while updating stock.');
+      } finally {
+        setBusyMaterialId(null);
       }
-      applySnapshot(data);
-      return { ok: true };
-    } catch {
-      return { ok: false, error: 'Network error while updating stock.' };
-    }
-  }
+    },
+    [activeOpId, applySnapshot, showNotice]
+  );
 
-  async function handleSaveSection(payload: {
-    id?: string;
-    code: string;
-    name: string;
-    zone: string;
-    capacity: number;
-    description: string;
-  }): Promise<{ ok: boolean; error?: string }> {
-    try {
-      const isEdit = Boolean(payload.id);
-      const res = await fetch('/api/sections', {
-        method: isEdit ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...payload,
-          operatorId: activeOperator?.id,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        return { ok: false, error: data.error || 'Failed to save section.' };
+  const handleSaveMaterial = useCallback(
+    async (payload: {
+      id?: string;
+      trackingCode: string;
+      name: string;
+      category: string;
+      sectionId: string;
+      quantity: number;
+      unit: string;
+      minThreshold: number;
+      lotNumber: string;
+    }): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const isEdit = Boolean(payload.id);
+        const res = await fetch('/api/materials', {
+          method: isEdit ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...payload,
+            operatorId: activeOpId,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          return { ok: false, error: data.error || 'Failed to save material.' };
+        }
+        applySnapshot(data);
+        return { ok: true };
+      } catch {
+        return { ok: false, error: 'Network error while saving material.' };
       }
-      applySnapshot(data);
-      return { ok: true };
-    } catch {
-      return { ok: false, error: 'Network error while saving section.' };
-    }
-  }
+    },
+    [activeOpId, applySnapshot]
+  );
 
-  async function handleConfirmDelete() {
+  const handleAdjustOrTransfer = useCallback(
+    async (payload: {
+      id: string;
+      mode: 'INBOUND' | 'OUTBOUND' | 'TRANSFER' | 'ADJUST';
+      delta: number;
+      targetSectionId?: string;
+      note: string;
+    }): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const res = await fetch('/api/materials', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'stock',
+            ...payload,
+            operatorId: activeOpId,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          return { ok: false, error: data.error || 'Failed to update stock.' };
+        }
+        applySnapshot(data);
+        return { ok: true };
+      } catch {
+        return { ok: false, error: 'Network error while updating stock.' };
+      }
+    },
+    [activeOpId, applySnapshot]
+  );
+
+  const handleSaveSection = useCallback(
+    async (payload: {
+      id?: string;
+      code: string;
+      name: string;
+      zone: string;
+      capacity: number;
+      description: string;
+    }): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const isEdit = Boolean(payload.id);
+        const res = await fetch('/api/sections', {
+          method: isEdit ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...payload,
+            operatorId: activeOpId,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          return { ok: false, error: data.error || 'Failed to save section.' };
+        }
+        applySnapshot(data);
+        return { ok: true };
+      } catch {
+        return { ok: false, error: 'Network error while saving section.' };
+      }
+    },
+    [activeOpId, applySnapshot]
+  );
+
+  const handleConfirmDelete = useCallback(async () => {
     if (!confirmDelete) return;
-    const opParam = activeOperator?.id
-      ? `&operatorId=${encodeURIComponent(activeOperator.id)}`
+    const opParam = activeOpId
+      ? `&operatorId=${encodeURIComponent(activeOpId)}`
       : '';
 
     try {
@@ -358,54 +426,114 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
     } finally {
       setConfirmDelete(null);
     }
-  }
+  }, [activeOpId, applySnapshot, confirmDelete, filters.sectionId, showNotice]);
 
-  async function handleCreateOperator(input: {
-    name: string;
-    badgeCode: string;
-    role: OperatorRole;
-  }): Promise<{ ok: boolean; error?: string }> {
-    try {
-      const res = await fetch('/api/operators', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...input,
-          actorId: activeOperator?.id,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        return { ok: false, error: data.error || 'Failed to add operator.' };
+  const handleCreateOperator = useCallback(
+    async (input: {
+      name: string;
+      badgeCode: string;
+      role: OperatorRole;
+    }): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const res = await fetch('/api/operators', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...input,
+            actorId: activeOpId,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          return { ok: false, error: data.error || 'Failed to add operator.' };
+        }
+        applySnapshot(data);
+        return { ok: true };
+      } catch {
+        return { ok: false, error: 'Network error while creating operator.' };
       }
-      applySnapshot(data);
-      return { ok: true };
-    } catch {
-      return { ok: false, error: 'Network error while creating operator.' };
-    }
-  }
+    },
+    [activeOpId, applySnapshot]
+  );
 
-  async function handleUpdateOperatorRole(operatorId: string, role: OperatorRole) {
-    try {
-      const res = await fetch('/api/operators', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: operatorId,
-          role,
-          actorId: activeOperator?.id,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showNotice('error', data.error || 'Failed to update role.');
-        return;
+  const handleUpdateOperatorRole = useCallback(
+    async (operatorId: string, role: OperatorRole) => {
+      try {
+        const res = await fetch('/api/operators', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: operatorId,
+            role,
+            actorId: activeOpId,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showNotice('error', data.error || 'Failed to update role.');
+          return;
+        }
+        applySnapshot(data);
+      } catch {
+        showNotice('error', 'Network error while updating operator role.');
       }
-      applySnapshot(data);
-    } catch {
-      showNotice('error', 'Network error while updating operator role.');
-    }
-  }
+    },
+    [activeOpId, applySnapshot, showNotice]
+  );
+
+  const handleCloseMobile = useCallback(() => setMobileMenuOpen(false), []);
+  const handleSelectSection = useCallback((sectionId: string | 'all') => {
+    setFilters((prev) => ({ ...prev, sectionId }));
+    setActiveTab('inventory');
+  }, []);
+  const handleOpenNewSection = useCallback(() => {
+    setEditingSection(null);
+    setSectionModalOpen(true);
+  }, []);
+  const handleNavigateMovements = useCallback(() => setActiveTab('movements'), []);
+  const handleFilterAlerts = useCallback(
+    () =>
+      setFilters((prev) => ({
+        ...prev,
+        status: prev.status === 'low' ? 'out' : prev.status === 'out' ? 'all' : 'low',
+      })),
+    []
+  );
+  const handleChangeFilters = useCallback(
+    (next: Partial<MaterialFilters>) => setFilters((prev) => ({ ...prev, ...next })),
+    []
+  );
+  const handleResetFilters = useCallback(
+    () =>
+      setFilters({
+        query: '',
+        sectionId: 'all',
+        status: 'all',
+        sortBy: 'updatedAt',
+        sortDir: 'desc',
+      }),
+    []
+  );
+  const handleOpenAddMaterial = useCallback(() => {
+    setEditingMaterial(null);
+    setMaterialModalOpen(true);
+  }, []);
+  const handleOpenEditMaterial = useCallback((mat: Material) => {
+    setEditingMaterial(mat);
+    setMaterialModalOpen(true);
+  }, []);
+  const handleDeleteMaterial = useCallback(
+    (mat: Material) => setConfirmDelete({ kind: 'material', item: mat }),
+    []
+  );
+  const handleOpenEditSection = useCallback((sec: Section) => {
+    setEditingSection(sec);
+    setSectionModalOpen(true);
+  }, []);
+  const handleDeleteSection = useCallback(
+    (sec: Section) => setConfirmDelete({ kind: 'section', item: sec }),
+    []
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
@@ -455,17 +583,11 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
           selectedSectionId={filters.sectionId}
           connectionState={connectionState}
           mobileOpen={mobileMenuOpen}
-          onCloseMobile={() => setMobileMenuOpen(false)}
-          onSelectSection={(sectionId) => {
-            setFilters((prev) => ({ ...prev, sectionId }));
-            setActiveTab('inventory');
-          }}
+          onCloseMobile={handleCloseMobile}
+          onSelectSection={handleSelectSection}
           onSwitchOperator={handleSwitchOperator}
-          onOpenNewSection={() => {
-            setEditingSection(null);
-            setSectionModalOpen(true);
-          }}
-          onNavigateMovements={() => setActiveTab('movements')}
+          onOpenNewSection={handleOpenNewSection}
+          onNavigateMovements={handleNavigateMovements}
         />
 
         <main className="flex-1 min-w-0 p-4 lg:p-6 space-y-4">
@@ -512,12 +634,7 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
               <MetricsStrip
                 metrics={metrics}
                 activeStatusFilter={filters.status}
-                onFilterAlerts={() =>
-                  setFilters((prev) => ({
-                    ...prev,
-                    status: prev.status === 'low' ? 'out' : prev.status === 'out' ? 'all' : 'low',
-                  }))
-                }
+                onFilterAlerts={handleFilterAlerts}
               />
 
               <InventoryTable
@@ -526,30 +643,14 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
                 filters={filters}
                 loading={false}
                 busyMaterialId={busyMaterialId}
-                onChangeFilters={(next) =>
-                  setFilters((prev) => ({ ...prev, ...next }))
-                }
-                onResetFilters={() =>
-                  setFilters({
-                    query: '',
-                    sectionId: 'all',
-                    status: 'all',
-                    sortBy: 'updatedAt',
-                    sortDir: 'desc',
-                  })
-                }
+                onChangeFilters={handleChangeFilters}
+                onResetFilters={handleResetFilters}
                 onQuickDelta={handleQuickDelta}
-                onOpenAdjust={(mat) => setAdjustMaterial(mat)}
-                onOpenEdit={(mat) => {
-                  setEditingMaterial(mat);
-                  setMaterialModalOpen(true);
-                }}
-                onOpenLabel={(mat) => setLabelMaterial(mat)}
-                onDelete={(mat) => setConfirmDelete({ kind: 'material', item: mat })}
-                onOpenAddMaterial={() => {
-                  setEditingMaterial(null);
-                  setMaterialModalOpen(true);
-                }}
+                onOpenAdjust={setAdjustMaterial}
+                onOpenEdit={handleOpenEditMaterial}
+                onOpenLabel={setLabelMaterial}
+                onDelete={handleDeleteMaterial}
+                onOpenAddMaterial={handleOpenAddMaterial}
               />
             </div>
           )}
@@ -558,19 +659,10 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
             <SectionsView
               sections={state.sections}
               materials={state.materials}
-              onOpenNewSection={() => {
-                setEditingSection(null);
-                setSectionModalOpen(true);
-              }}
-              onOpenEditSection={(sec) => {
-                setEditingSection(sec);
-                setSectionModalOpen(true);
-              }}
-              onDeleteSection={(sec) => setConfirmDelete({ kind: 'section', item: sec })}
-              onInspectSection={(sectionId) => {
-                setFilters((prev) => ({ ...prev, sectionId }));
-                setActiveTab('inventory');
-              }}
+              onOpenNewSection={handleOpenNewSection}
+              onOpenEditSection={handleOpenEditSection}
+              onDeleteSection={handleDeleteSection}
+              onInspectSection={handleSelectSection}
             />
           )}
 

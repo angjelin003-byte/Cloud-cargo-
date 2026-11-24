@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import type { Movement, MovementType } from '@/lib/types';
 import { FormattedTime } from './FormattedTime';
 
@@ -17,13 +17,18 @@ const FILTER_OPTIONS: { value: MovementType | 'ALL'; label: string }[] = [
   { value: 'CREATED', label: 'New SKUs' },
 ];
 
-export function MovementsView({ movements }: MovementsViewProps) {
+export const MovementsView = memo(function MovementsView({
+  movements,
+}: MovementsViewProps) {
   const [typeFilter, setTypeFilter] = useState<MovementType | 'ALL'>('ALL');
 
-  const visible =
-    typeFilter === 'ALL'
-      ? movements
-      : movements.filter((m) => m.type === typeFilter);
+  const visible = useMemo(
+    () =>
+      typeFilter === 'ALL'
+        ? movements
+        : movements.filter((m) => m.type === typeFilter),
+    [movements, typeFilter]
+  );
 
   return (
     <div className="space-y-3">
@@ -124,4 +129,4 @@ export function MovementsView({ movements }: MovementsViewProps) {
       </div>
     </div>
   );
-}
+});

@@ -6,6 +6,12 @@ import {
   updateMaterialMetadataRecord,
 } from '@/lib/warehouse-store';
 
+function parseNumberField(value: unknown): number {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && value.trim() !== '') return Number(value);
+  return Number.NaN;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -15,9 +21,9 @@ export async function POST(request: NextRequest) {
         name: String(body.name ?? ''),
         category: String(body.category ?? ''),
         sectionId: String(body.sectionId ?? ''),
-        quantity: Number(body.quantity ?? 0),
+        quantity: parseNumberField(body.quantity),
         unit: String(body.unit ?? ''),
-        minThreshold: Number(body.minThreshold ?? 0),
+        minThreshold: parseNumberField(body.minThreshold),
         lotNumber: body.lotNumber ? String(body.lotNumber) : '',
       },
       body.operatorId ? String(body.operatorId) : undefined
@@ -49,7 +55,7 @@ export async function PATCH(request: NextRequest) {
         {
           id,
           mode,
-          delta: body.delta !== undefined ? Number(body.delta) : 0,
+          delta: body.delta !== undefined ? parseNumberField(body.delta) : 0,
           targetSectionId: body.targetSectionId ? String(body.targetSectionId) : undefined,
           note: body.note ? String(body.note) : undefined,
         },
@@ -68,9 +74,9 @@ export async function PATCH(request: NextRequest) {
         name: String(body.name ?? ''),
         category: String(body.category ?? ''),
         sectionId: String(body.sectionId ?? ''),
-        quantity: Number(body.quantity ?? 0),
+        quantity: parseNumberField(body.quantity),
         unit: String(body.unit ?? ''),
-        minThreshold: Number(body.minThreshold ?? 0),
+        minThreshold: parseNumberField(body.minThreshold),
         lotNumber: body.lotNumber ? String(body.lotNumber) : '',
       },
       body.operatorId ? String(body.operatorId) : undefined

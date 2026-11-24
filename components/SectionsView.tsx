@@ -1,5 +1,6 @@
 'use client';
 
+import { memo, useMemo } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import type { Material, Section } from '@/lib/types';
 
@@ -12,7 +13,7 @@ interface SectionsViewProps {
   onInspectSection: (sectionId: string) => void;
 }
 
-export function SectionsView({
+export const SectionsView = memo(function SectionsView({
   sections,
   materials,
   onOpenNewSection,
@@ -20,14 +21,17 @@ export function SectionsView({
   onDeleteSection,
   onInspectSection,
 }: SectionsViewProps) {
-  const statsMap = new Map<string, { skus: number; units: number }>();
-  for (const m of materials) {
-    const prev = statsMap.get(m.sectionId) ?? { skus: 0, units: 0 };
-    statsMap.set(m.sectionId, {
-      skus: prev.skus + 1,
-      units: prev.units + m.quantity,
-    });
-  }
+  const statsMap = useMemo(() => {
+    const map = new Map<string, { skus: number; units: number }>();
+    for (const m of materials) {
+      const prev = map.get(m.sectionId) ?? { skus: 0, units: 0 };
+      map.set(m.sectionId, {
+        skus: prev.skus + 1,
+        units: prev.units + m.quantity,
+      });
+    }
+    return map;
+  }, [materials]);
 
   return (
     <div className="space-y-3">
@@ -166,4 +170,4 @@ export function SectionsView({
       )}
     </div>
   );
-}
+});

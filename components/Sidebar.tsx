@@ -1,5 +1,6 @@
 'use client';
 
+import { memo, useMemo } from 'react';
 import { Plus, X } from 'lucide-react';
 import type { ActiveSession, Material, Movement, Operator, Section } from '@/lib/types';
 
@@ -20,7 +21,7 @@ interface SidebarProps {
   onNavigateMovements: () => void;
 }
 
-export function Sidebar({
+export const Sidebar = memo(function Sidebar({
   sections,
   materials,
   operators,
@@ -36,12 +37,23 @@ export function Sidebar({
   onOpenNewSection,
   onNavigateMovements,
 }: SidebarProps) {
-  const countsBySection = new Map<string, number>();
-  for (const m of materials) {
-    countsBySection.set(m.sectionId, (countsBySection.get(m.sectionId) ?? 0) + 1);
-  }
+  const countsBySection = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const m of materials) {
+      map.set(m.sectionId, (map.get(m.sectionId) ?? 0) + 1);
+    }
+    return map;
+  }, [materials]);
 
-  const onlineOperatorIds = new Set(activeSessions.map((s) => s.operatorId));
+  const onlineOperatorCount = useMemo(
+    () => new Set(activeSessions.map((s) => s.operatorId)).size,
+    [activeSessions]
+  );
+
+  const activeOperators = useMemo(
+    () => operators.filter((o) => o.active),
+    [operators]
+  );
 
   const sidebarBody = (
     <div className="flex flex-col h-full bg-white border-r border-slate-200 w-64 select-none">
@@ -68,13 +80,11 @@ export function Sidebar({
           onChange={(e) => onSwitchOperator(e.target.value)}
           className="w-full h-9 px-2.5 text-xs font-medium text-slate-900 bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
         >
-          {operators
-            .filter((o) => o.active)
-            .map((op) => (
-              <option key={op.id} value={op.id}>
-                {op.name} ({op.badgeCode})
-              </option>
-            ))}
+          {activeOperators.map((op) => (
+            <option key={op.id} value={op.id}>
+              {op.name} ({op.badgeCode})
+            </option>
+          ))}
         </select>
         {activeOperator && (
           <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-500">
@@ -82,7 +92,7 @@ export function Sidebar({
             <span aria-hidden="true">·</span>
             <span className="font-mono">{activeOperator.badgeCode}</span>
             <span aria-hidden="true">·</span>
-            <span>{onlineOperatorIds.size} online</span>
+            <span>{onlineOperatorCount} online</span>
           </div>
         )}
       </div>
@@ -240,4 +250,4 @@ export function Sidebar({
       )}
     </>
   );
-}
+});

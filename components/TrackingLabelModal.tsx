@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Copy, X } from 'lucide-react';
 import type { Material, Section } from '@/lib/types';
 import { buildBarcodePattern } from '@/lib/warehouse-logic';
@@ -17,13 +17,17 @@ export function TrackingLabelModal({
   onClose,
 }: TrackingLabelModalProps) {
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
   }, [onClose]);
 
   const { rects, totalWidth } = useMemo(() => {
@@ -44,7 +48,8 @@ export function TrackingLabelModal({
     try {
       await navigator.clipboard.writeText(material.trackingCode);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 1600);
     } catch {
       // Clipboard may be restricted in headless contexts
     }

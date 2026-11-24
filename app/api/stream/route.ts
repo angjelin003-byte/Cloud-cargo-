@@ -1,62 +1,79 @@
-import { NextRequest } from 'next/server';
-import { getWarehouseSnapshot, subscribeToStream } from '@/lib/warehouse-store';
-import type { StreamEvent } from '@/lib/types';
+import { NextRequest, NextResponse } from 'next/server';
+import {
+  encodeSseEvent,
+  getWarehouseSnapshot,
+  subscribeToStream,
+  updateSessionOperator,
+} from '@/lib/warehouse-store';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+const keepaliveEncoder = new TextEncoder();
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const clientId = searchParams.get('clientId') || `client-${Date.now()}`;
   const operatorId = searchParams.get('operatorId') || 'op-1';
 
-  const encoder = new TextEncoder();
-
   let cleanup = () => {};
   let heartbeat: ReturnType<typeof setInterval> | null = null;
+  let closed = false;
+  let onAbort: (() => void) | null = null;
+
+  const teardown = () => {
+    if (closed) return;
+    closed = true;
+    if (heartbeat) {
+      clearInterval(heartbeat);
+      heartbeat = null;
+    }
+    if (onAbort) {
+      request.signal.removeEventListener('abort', onAbort);
+      onAbort = null;
+    }
+    cleanup();
+  };
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      const send = (event: StreamEvent) => {
+      const sendChunk = (chunk: Uint8Array) => {
+        if (closed) return;
         try {
-          const payload = `data: ${JSON.stringify(event)}\n\n`;
-          controller.enqueue(encoder.encode(payload));
+          controller.enqueue(chunk);
         } catch {
-          // Stream closed
+          teardown();
         }
       };
 
-      cleanup = subscribeToStream(send, { clientId, operatorId });
+      cleanup = subscribeToStream(sendChunk, { clientId, operatorId });
 
       const initial = getWarehouseSnapshot();
-      send({
-        type: 'init',
-        state: initial.state,
-        activeSessions: initial.activeSessions,
-      });
+      sendChunk(
+        encodeSseEvent({
+          type: 'init',
+          state: initial.state,
+          activeSessions: initial.activeSessions,
+        })
+      );
 
       heartbeat = setInterval(() => {
-        try {
-          controller.enqueue(encoder.encode(`: keepalive ${Date.now()}\n\n`));
-        } catch {
-          if (heartbeat) clearInterval(heartbeat);
-          cleanup();
-        }
+        sendChunk(keepaliveEncoder.encode(`: keepalive ${Date.now()}\n\n`));
       }, 20000);
 
-      request.signal.addEventListener('abort', () => {
-        if (heartbeat) clearInterval(heartbeat);
-        cleanup();
+      onAbort = () => {
+        teardown();
         try {
           controller.close();
         } catch {
           // Already closed
         }
-      });
+      };
+
+      request.signal.addEventListener('abort', onAbort, { once: true });
     },
     cancel() {
-      if (heartbeat) clearInterval(heartbeat);
-      cleanup();
+      teardown();
     },
   });
 
@@ -68,4 +85,22 @@ export async function GET(request: NextRequest) {
       'X-Accel-Buffering': 'no',
     },
   });
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const clientId = String(body.clientId ?? '').trim();
+    const operatorId = String(body.operatorId ?? '').trim();
+    if (!clientId || !operatorId) {
+      return NextResponse.json(
+        { error: 'clientId and operatorId are required.' },
+        { status: 400 }
+      );
+    }
+    const activeSessions = updateSessionOperator(clientId, operatorId);
+    return NextResponse.json({ activeSessions });
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON request body.' }, { status: 400 });
+  }
 }

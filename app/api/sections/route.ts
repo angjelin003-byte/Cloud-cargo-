@@ -5,6 +5,12 @@ import {
   updateSectionRecord,
 } from '@/lib/warehouse-store';
 
+function parseNumberField(value: unknown): number {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && value.trim() !== '') return Number(value);
+  return Number.NaN;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -13,7 +19,7 @@ export async function POST(request: NextRequest) {
         code: String(body.code ?? ''),
         name: String(body.name ?? ''),
         zone: String(body.zone ?? ''),
-        capacity: Number(body.capacity ?? 0),
+        capacity: parseNumberField(body.capacity),
         description: String(body.description ?? ''),
       },
       body.operatorId ? String(body.operatorId) : undefined
@@ -42,7 +48,7 @@ export async function PATCH(request: NextRequest) {
         code: String(body.code ?? ''),
         name: String(body.name ?? ''),
         zone: String(body.zone ?? ''),
-        capacity: Number(body.capacity ?? 0),
+        capacity: parseNumberField(body.capacity),
         description: String(body.description ?? ''),
       },
       body.operatorId ? String(body.operatorId) : undefined

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { UserPlus } from 'lucide-react';
 import type { ActiveSession, Operator, OperatorRole } from '@/lib/types';
 
@@ -19,7 +19,7 @@ interface OperatorsViewProps {
 
 const ROLES: OperatorRole[] = ['Admin', 'Supervisor', 'Operator'];
 
-export function OperatorsView({
+export const OperatorsView = memo(function OperatorsView({
   operators,
   activeOperator,
   activeSessions,
@@ -33,10 +33,13 @@ export function OperatorsView({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const sessionsByOp = new Map<string, number>();
-  for (const s of activeSessions) {
-    sessionsByOp.set(s.operatorId, (sessionsByOp.get(s.operatorId) ?? 0) + 1);
-  }
+  const sessionsByOp = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of activeSessions) {
+      map.set(s.operatorId, (map.get(s.operatorId) ?? 0) + 1);
+    }
+    return map;
+  }, [activeSessions]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -209,4 +212,4 @@ export function OperatorsView({
       </div>
     </div>
   );
-}
+});
