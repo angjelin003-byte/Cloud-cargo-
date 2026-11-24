@@ -1,0 +1,8 @@
+2026-11-24T06:30:52.7800000Z Job is about to start running on the hosted runner: GitHub Actions 1000000643
+2026-11-24T06:30:52.7810000Z Job is waiting for a hosted runner to come online.
+2026-11-24T06:30:52.7770000Z Evaluating build-and-verify.if
+2026-11-24T06:30:52.7770000Z Evaluating: success()
+2026-11-24T06:30:52.7770000Z Result: true
+2026-11-24T06:30:52.7770000Z Requested labels: ubuntu-latest
+2026-11-24T06:30:52.7770000Z Job defined at: angjelin003-byte/Cloud-cargo-/.github/workflows/ci.yml@refs/heads/main
+2026-11-24T06:30:52.7770000Z Waiting for a runner to pick up this job...

@@ -1,0 +1,275 @@
+﻿2026-11-24T06:30:54.3250138Z Current runner version: '2.338.2'
+2026-11-24T06:30:54.3279267Z ##[group]Runner Image Provisioner
+2026-11-24T06:30:54.3280340Z Hosted Compute Agent
+2026-11-24T06:30:54.3281188Z Version: 20261111.635
+2026-11-24T06:30:54.3281997Z Commit: b8a594ea514ff44cadb5342986c68b1eac6e22ed
+2026-11-24T06:30:54.3282986Z Build Date: 2026-11-11T01:49:01Z
+2026-11-24T06:30:54.3283901Z Worker ID: {dc74043b-daf2-405a-a9ac-d792d272fcb0}
+2026-11-24T06:30:54.3285106Z Region: eastus2
+2026-11-24T06:30:54.3285858Z Cloud: Azure
+2026-11-24T06:30:54.3286592Z ##[endgroup]
+2026-11-24T06:30:54.3288348Z ##[group]Operating System
+2026-11-24T06:30:54.3289204Z Ubuntu
+2026-11-24T06:30:54.3289901Z 26.04.1
+2026-11-24T06:30:54.3290624Z LTS
+2026-11-24T06:30:54.3291273Z ##[endgroup]
+2026-11-24T06:30:54.3291946Z ##[group]Runner Image
+2026-11-24T06:30:54.3292775Z Image: ubuntu-26.04
+2026-11-24T06:30:54.3293553Z Version: 20261116.202.1
+2026-11-24T06:30:54.3295863Z Included Software: https://github.com/actions/runner-images/blob/ubuntu26/20261116.202/images/ubuntu/Ubuntu2604-Readme.md
+2026-11-24T06:30:54.3298055Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu26%2F20261116.202
+2026-11-24T06:30:54.3299478Z ##[endgroup]
+2026-11-24T06:30:54.3301019Z ##[group]GITHUB_TOKEN Permissions
+2026-11-24T06:30:54.3303252Z Contents: read
+2026-11-24T06:30:54.3304301Z Metadata: read
+2026-11-24T06:30:54.3305942Z Packages: read
+2026-11-24T06:30:54.3306685Z ##[endgroup]
+2026-11-24T06:30:54.3309052Z Secret source: Actions
+2026-11-24T06:30:54.3310289Z Cache mode: write
+2026-11-24T06:30:54.3311169Z Prepare workflow directory
+2026-11-24T06:30:54.3599372Z Prepare all required actions
+2026-11-24T06:30:54.3652924Z Getting action download info
+2026-11-24T06:30:54.5580611Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-11-24T06:30:54.6816205Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+2026-11-24T06:30:54.8535995Z Complete job name: build-and-verify
+2026-11-24T06:30:54.9265809Z ##[group]Run actions/checkout@v4
+2026-11-24T06:30:54.9266481Z with:
+2026-11-24T06:30:54.9266868Z   repository: angjelin003-byte/Cloud-cargo-
+2026-11-24T06:30:54.9270271Z   token: ***
+2026-11-24T06:30:54.9270637Z   ssh-strict: true
+2026-11-24T06:30:54.9271007Z   ssh-user: git
+2026-11-24T06:30:54.9271379Z   persist-credentials: true
+2026-11-24T06:30:54.9271770Z   clean: true
+2026-11-24T06:30:54.9272135Z   sparse-checkout-cone-mode: true
+2026-11-24T06:30:54.9272563Z   fetch-depth: 1
+2026-11-24T06:30:54.9272911Z   fetch-tags: false
+2026-11-24T06:30:54.9273280Z   show-progress: true
+2026-11-24T06:30:54.9273640Z   lfs: false
+2026-11-24T06:30:54.9273979Z   submodules: false
+2026-11-24T06:30:54.9274469Z   set-safe-directory: true
+2026-11-24T06:30:54.9274883Z   allow-unsafe-pr-checkout: false
+2026-11-24T06:30:54.9275480Z ##[endgroup]
+2026-11-24T06:30:55.2078706Z Syncing repository: angjelin003-byte/Cloud-cargo-
+2026-11-24T06:30:55.2080507Z ##[group]Getting Git version info
+2026-11-24T06:30:55.2081319Z Working directory is '/home/runner/work/Cloud-cargo-/Cloud-cargo-'
+2026-11-24T06:30:55.2082277Z [command]/usr/bin/git version
+2026-11-24T06:30:55.2098850Z git version 2.56.1
+2026-11-24T06:30:55.2117072Z ##[endgroup]
+2026-11-24T06:30:55.2129922Z Temporarily overriding HOME='/home/runner/work/_temp/1233b82d-700e-4176-a6f3-81d7627bcb52' before making global git config changes
+2026-11-24T06:30:55.2132047Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-24T06:30:55.2135676Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Cloud-cargo-/Cloud-cargo-
+2026-11-24T06:30:55.2206301Z Deleting the contents of '/home/runner/work/Cloud-cargo-/Cloud-cargo-'
+2026-11-24T06:30:55.2209498Z ##[group]Initializing the repository
+2026-11-24T06:30:55.2213985Z [command]/usr/bin/git init /home/runner/work/Cloud-cargo-/Cloud-cargo-
+2026-11-24T06:30:55.2323346Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-11-24T06:30:55.2325506Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-11-24T06:30:55.2326918Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-11-24T06:30:55.2328043Z hint: call:
+2026-11-24T06:30:55.2328699Z hint:
+2026-11-24T06:30:55.2329462Z hint: 	git config --global init.defaultBranch <name>
+2026-11-24T06:30:55.2330378Z hint:
+2026-11-24T06:30:55.2331323Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-11-24T06:30:55.2332789Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-11-24T06:30:55.2333966Z hint:
+2026-11-24T06:30:55.2334820Z hint: 	git branch -m <name>
+2026-11-24T06:30:55.2335653Z hint:
+2026-11-24T06:30:55.2336613Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-11-24T06:30:55.2338221Z Initialized empty Git repository in /home/runner/work/Cloud-cargo-/Cloud-cargo-/.git/
+2026-11-24T06:30:55.2348794Z [command]/usr/bin/git remote add origin https://github.com/angjelin003-byte/Cloud-cargo-
+2026-11-24T06:30:55.2403719Z ##[endgroup]
+2026-11-24T06:30:55.2405157Z ##[group]Disabling automatic garbage collection
+2026-11-24T06:30:55.2406776Z [command]/usr/bin/git config --local gc.auto 0
+2026-11-24T06:30:55.2446703Z ##[endgroup]
+2026-11-24T06:30:55.2447822Z ##[group]Setting up auth
+2026-11-24T06:30:55.2448939Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-24T06:30:55.2479967Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-24T06:30:55.2911745Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-24T06:30:55.2943621Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-24T06:30:55.3205846Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-24T06:30:55.3249306Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-24T06:30:55.3526844Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-11-24T06:30:55.3781669Z ##[endgroup]
+2026-11-24T06:30:55.3783041Z ##[group]Fetching the repository
+2026-11-24T06:30:55.3791762Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +36b66e25a17bbdd9017c4b7ec80c057c6b338970:refs/remotes/origin/main
+2026-11-24T06:30:55.5965216Z From https://github.com/angjelin003-byte/Cloud-cargo-
+2026-11-24T06:30:55.5966358Z  * [new ref]         36b66e25a17bbdd9017c4b7ec80c057c6b338970 -> origin/main
+2026-11-24T06:30:55.5968248Z ##[endgroup]
+2026-11-24T06:30:55.5968965Z ##[group]Determining the checkout info
+2026-11-24T06:30:55.5969948Z ##[endgroup]
+2026-11-24T06:30:55.5970618Z [command]/usr/bin/git sparse-checkout disable
+2026-11-24T06:30:55.6023357Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-11-24T06:30:55.6054334Z ##[group]Checking out the ref
+2026-11-24T06:30:55.6059499Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-11-24T06:30:55.6146760Z Switched to a new branch 'main'
+2026-11-24T06:30:55.6152331Z branch 'main' set up to track 'origin/main'.
+2026-11-24T06:30:55.6160046Z ##[endgroup]
+2026-11-24T06:30:55.6202174Z [command]/usr/bin/git log -1 --format=%H
+2026-11-24T06:30:55.6225966Z 36b66e25a17bbdd9017c4b7ec80c057c6b338970
+2026-11-24T06:30:55.6532564Z ##[group]Run actions/setup-node@v4
+2026-11-24T06:30:55.6533274Z with:
+2026-11-24T06:30:55.6533745Z   node-version: 20
+2026-11-24T06:30:55.6534493Z   always-auth: false
+2026-11-24T06:30:55.6535043Z   check-latest: false
+2026-11-24T06:30:55.6543200Z   token: ***
+2026-11-24T06:30:55.6543867Z ##[endgroup]
+2026-11-24T06:30:55.9878776Z Attempting to download 20...
+2026-11-24T06:30:56.0010541Z (node:2183) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-11-24T06:30:56.0013047Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-11-24T06:30:56.5854609Z Acquiring 20.20.2 - x64 from https://github.com/actions/node-versions/releases/download/20.20.2-23521894959/node-20.20.2-linux-x64.tar.gz
+2026-11-24T06:30:56.8840115Z Extracting ...
+2026-11-24T06:30:56.8944311Z [command]/usr/bin/tar xz --strip 1 --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/20af8fb9-c2ef-4bb2-b3d5-3b75d96ab0da -f /home/runner/work/_temp/aec121c1-5f69-4d54-a6c5-c3c6aa8bcc2b
+2026-11-24T06:30:57.4443203Z Adding to the cache ...
+2026-11-24T06:30:59.5054371Z ##[group]Environment details
+2026-11-24T06:30:59.8084246Z node: v20.20.2
+2026-11-24T06:30:59.8084627Z npm: 10.8.2
+2026-11-24T06:30:59.8084862Z yarn: 1.22.22
+2026-11-24T06:30:59.8085530Z ##[endgroup]
+2026-11-24T06:30:59.8277495Z ##[group]Run if [ -f package-lock.json ]; then
+2026-11-24T06:30:59.8277842Z [36;1mif [ -f package-lock.json ]; then[0m
+2026-11-24T06:30:59.8278092Z [36;1m  npm ci[0m
+2026-11-24T06:30:59.8278262Z [36;1melse[0m
+2026-11-24T06:30:59.8278438Z [36;1m  npm install[0m
+2026-11-24T06:30:59.8278643Z [36;1mfi[0m
+2026-11-24T06:30:59.8313228Z shell: /usr/bin/bash -e {0}
+2026-11-24T06:30:59.8313461Z ##[endgroup]
+2026-11-24T06:31:23.0823958Z npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+2026-11-24T06:31:25.7112294Z npm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+2026-11-24T06:31:26.0740739Z npm warn deprecated json-ptr@3.1.1: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+2026-11-24T06:31:26.1612153Z npm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+2026-11-24T06:31:28.2969250Z npm warn deprecated eslint@9.39.1: This version is no longer supported. Please see https://eslint.org/version-support for other options.
+2026-11-24T06:31:34.1721927Z 
+2026-11-24T06:31:34.1722817Z added 949 packages, and audited 950 packages in 34s
+2026-11-24T06:31:34.1723188Z 
+2026-11-24T06:31:34.1723430Z 235 packages are looking for funding
+2026-11-24T06:31:34.1724043Z   run `npm fund` for details
+2026-11-24T06:31:34.2205658Z 
+2026-11-24T06:31:34.2206519Z 19 vulnerabilities (18 moderate, 1 high)
+2026-11-24T06:31:34.2206942Z 
+2026-11-24T06:31:34.2207435Z To address issues that do not require attention, run:
+2026-11-24T06:31:34.2207965Z   npm audit fix
+2026-11-24T06:31:34.2208127Z 
+2026-11-24T06:31:34.2208482Z To address all issues (including breaking changes), run:
+2026-11-24T06:31:34.2210434Z   npm audit fix --force
+2026-11-24T06:31:34.2211013Z 
+2026-11-24T06:31:34.2211256Z Run `npm audit` for details.
+2026-11-24T06:31:34.2690458Z ##[group]Run npm run typecheck
+2026-11-24T06:31:34.2690717Z [36;1mnpm run typecheck[0m
+2026-11-24T06:31:34.2724000Z shell: /usr/bin/bash -e {0}
+2026-11-24T06:31:34.2724476Z ##[endgroup]
+2026-11-24T06:31:34.3649197Z 
+2026-11-24T06:31:34.3649968Z > ai-studio-applet@0.1.0 typecheck
+2026-11-24T06:31:34.3650493Z > next typegen && tsc --noEmit
+2026-11-24T06:31:34.3650743Z 
+2026-11-24T06:31:34.8385390Z Generating route types...
+2026-11-24T06:31:34.8507721Z ✓ Route types generated successfully
+2026-11-24T06:31:37.4800966Z ##[group]Run npm run lint
+2026-11-24T06:31:37.4801202Z [36;1mnpm run lint[0m
+2026-11-24T06:31:37.4831137Z shell: /usr/bin/bash -e {0}
+2026-11-24T06:31:37.4831352Z ##[endgroup]
+2026-11-24T06:31:37.5730841Z 
+2026-11-24T06:31:37.5731511Z > ai-studio-applet@0.1.0 lint
+2026-11-24T06:31:37.5732462Z > eslint .
+2026-11-24T06:31:37.5732622Z 
+2026-11-24T06:31:40.2580790Z ##[group]Run npm test
+2026-11-24T06:31:40.2581014Z [36;1mnpm test[0m
+2026-11-24T06:31:40.2610647Z shell: /usr/bin/bash -e {0}
+2026-11-24T06:31:40.2610865Z ##[endgroup]
+2026-11-24T06:31:40.3523378Z 
+2026-11-24T06:31:40.3523866Z > ai-studio-applet@0.1.0 test
+2026-11-24T06:31:40.3524406Z > npx --yes tsx --test lib/warehouse-logic.test.ts
+2026-11-24T06:31:40.3524603Z 
+2026-11-24T06:31:42.1902644Z TAP version 13
+2026-11-24T06:31:42.3994029Z # Subtest: normalizeCode cleans whitespace, lowercase, and special characters
+2026-11-24T06:31:42.4001945Z ok 1 - normalizeCode cleans whitespace, lowercase, and special characters
+2026-11-24T06:31:42.4002730Z   ---
+2026-11-24T06:31:42.4003319Z   duration_ms: 0.834629
+2026-11-24T06:31:42.4010445Z   ...
+2026-11-24T06:31:42.4028616Z # Subtest: validateSectionInput rejects duplicate codes and accepts unique codes
+2026-11-24T06:31:42.4037436Z ok 2 - validateSectionInput rejects duplicate codes and accepts unique codes
+2026-11-24T06:31:42.4048389Z   ---
+2026-11-24T06:31:42.4048808Z   duration_ms: 0.474751
+2026-11-24T06:31:42.4049091Z   ...
+2026-11-24T06:31:42.4049616Z # Subtest: generateTrackingCode creates collision-free sequential codes
+2026-11-24T06:31:42.4050353Z ok 3 - generateTrackingCode creates collision-free sequential codes
+2026-11-24T06:31:42.4050840Z   ---
+2026-11-24T06:31:42.4051093Z   duration_ms: 0.284746
+2026-11-24T06:31:42.4051366Z   ...
+2026-11-24T06:31:42.4051953Z # Subtest: validateMaterialInput prevents duplicate tracking codes and invalid sections
+2026-11-24T06:31:42.4052904Z ok 4 - validateMaterialInput prevents duplicate tracking codes and invalid sections
+2026-11-24T06:31:42.4053443Z   ---
+2026-11-24T06:31:42.4053699Z   duration_ms: 0.281642
+2026-11-24T06:31:42.4053962Z   ...
+2026-11-24T06:31:42.4054664Z # Subtest: applyStockDelta blocks negative resulting stock
+2026-11-24T06:31:42.4055244Z ok 5 - applyStockDelta blocks negative resulting stock
+2026-11-24T06:31:42.4055648Z   ---
+2026-11-24T06:31:42.4055903Z   duration_ms: 0.210776
+2026-11-24T06:31:42.4056177Z   ...
+2026-11-24T06:31:42.4056700Z # Subtest: getStockStatus and computeWarehouseMetrics calculate exact counts
+2026-11-24T06:31:42.4057469Z ok 6 - getStockStatus and computeWarehouseMetrics calculate exact counts
+2026-11-24T06:31:42.4057940Z   ---
+2026-11-24T06:31:42.4058185Z   duration_ms: 0.17315
+2026-11-24T06:31:42.4058447Z   ...
+2026-11-24T06:31:42.4058932Z # Subtest: filterAndSortMaterials matches tracking code and section code
+2026-11-24T06:31:42.4059584Z ok 7 - filterAndSortMaterials matches tracking code and section code
+2026-11-24T06:31:42.4060015Z   ---
+2026-11-24T06:31:42.4060244Z   duration_ms: 0.255903
+2026-11-24T06:31:42.4060556Z   ...
+2026-11-24T06:31:42.4161287Z 1..7
+2026-11-24T06:31:42.4161576Z # tests 7
+2026-11-24T06:31:42.4165082Z # suites 0
+2026-11-24T06:31:42.4174519Z # pass 7
+2026-11-24T06:31:42.4174876Z # fail 0
+2026-11-24T06:31:42.4175145Z # cancelled 0
+2026-11-24T06:31:42.4175482Z # skipped 0
+2026-11-24T06:31:42.4175786Z # todo 0
+2026-11-24T06:31:42.4176086Z # duration_ms 234.110685
+2026-11-24T06:31:42.4525400Z ##[group]Run npm run build
+2026-11-24T06:31:42.4525637Z [36;1mnpm run build[0m
+2026-11-24T06:31:42.4554317Z shell: /usr/bin/bash -e {0}
+2026-11-24T06:31:42.4554531Z ##[endgroup]
+2026-11-24T06:31:42.5500891Z 
+2026-11-24T06:31:42.5501369Z > ai-studio-applet@0.1.0 build
+2026-11-24T06:31:42.5501659Z > next build
+2026-11-24T06:31:42.5501769Z 
+2026-11-24T06:31:43.1180490Z ⚠ No build cache found. Please configure build caching for faster rebuilds. Read more: https://nextjs.org/docs/messages/no-cache
+2026-11-24T06:31:43.1229647Z Attention: Next.js now collects completely anonymous telemetry regarding usage.
+2026-11-24T06:31:43.1230552Z This information is used to shape Next.js' roadmap and prioritize features.
+2026-11-24T06:31:43.1231699Z You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+2026-11-24T06:31:43.1232943Z https://nextjs.org/telemetry
+2026-11-24T06:31:43.1233173Z 
+2026-11-24T06:31:43.1956268Z    ▲ Next.js 15.5.29
+2026-11-24T06:31:43.1956612Z 
+2026-11-24T06:31:43.2520010Z    Creating an optimized production build ...
+2026-11-24T06:31:46.1682397Z Failed to compile.
+2026-11-24T06:31:46.1682805Z 
+2026-11-24T06:31:46.1683082Z app/layout.tsx
+2026-11-24T06:31:46.1683429Z An error occurred in `next/font`.
+2026-11-24T06:31:46.1683663Z 
+2026-11-24T06:31:46.1683942Z TypeError: Cannot read properties of null (reading '1')
+2026-11-24T06:31:46.1684656Z     at /home/runner/work/Cloud-cargo-/Cloud-cargo-/node_modules/next/dist/compiled/@next/font/dist/google/loader.js:122:78
+2026-11-24T06:31:46.1685261Z     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-11-24T06:31:46.1685619Z     at async Promise.all (index 3)
+2026-11-24T06:31:46.1686217Z     at async nextFontGoogleFontLoader (/home/runner/work/Cloud-cargo-/Cloud-cargo-/node_modules/next/dist/compiled/@next/font/dist/google/loader.js:104:33)
+2026-11-24T06:31:46.1687027Z     at async Span.traceAsyncFn (/home/runner/work/Cloud-cargo-/Cloud-cargo-/node_modules/next/dist/trace/trace.js:157:20)
+2026-11-24T06:31:46.1687738Z     at async /home/runner/work/Cloud-cargo-/Cloud-cargo-/node_modules/next/dist/build/webpack/loaders/next-font-loader/index.js:84:87
+2026-11-24T06:31:46.1688411Z     at async Span.traceAsyncFn (/home/runner/work/Cloud-cargo-/Cloud-cargo-/node_modules/next/dist/trace/trace.js:157:20)
+2026-11-24T06:31:46.1688739Z 
+2026-11-24T06:31:46.1703303Z 
+2026-11-24T06:31:46.1703972Z > Build failed because of webpack errors
+2026-11-24T06:31:46.2095498Z ##[error]Process completed with exit code 1.
+2026-11-24T06:31:46.2229539Z Post job cleanup.
+2026-11-24T06:31:46.2918887Z [command]/usr/bin/git version
+2026-11-24T06:31:46.2954907Z git version 2.56.1
+2026-11-24T06:31:46.2982200Z Temporarily overriding HOME='/home/runner/work/_temp/3f2de10b-fce0-4e7e-af72-5b86cea22e36' before making global git config changes
+2026-11-24T06:31:46.2983342Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-24T06:31:46.2986853Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Cloud-cargo-/Cloud-cargo-
+2026-11-24T06:31:46.3023231Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-24T06:31:46.3055861Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-24T06:31:46.3336935Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-24T06:31:46.3359742Z http.https://github.com/.extraheader
+2026-11-24T06:31:46.3379925Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-11-24T06:31:46.3413713Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-24T06:31:46.3691424Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-24T06:31:46.3723191Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-24T06:31:46.4122236Z Cleaning up orphan processes
+2026-11-24T06:31:46.4508371Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
