@@ -2,7 +2,7 @@
 
 import { Menu, Plus } from 'lucide-react';
 
-export type WorkspaceTab = 'inventory' | 'sections' | 'movements' | 'operators';
+export type WorkspaceTab = 'inventory' | 'sections' | 'files' | 'movements' | 'operators';
 
 interface TopBarProps {
   activeTab: WorkspaceTab;
@@ -14,6 +14,7 @@ interface TopBarProps {
 const NAV_ITEMS: { id: WorkspaceTab; label: string }[] = [
   { id: 'inventory', label: 'Inventory' },
   { id: 'sections', label: 'Sections' },
+  { id: 'files', label: 'Files' },
   { id: 'movements', label: 'Movements' },
   { id: 'operators', label: 'Operators' },
 ];

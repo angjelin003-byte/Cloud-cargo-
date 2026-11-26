@@ -14,6 +14,7 @@ import type {
   Material,
   OperatorRole,
   Section,
+  SharedFile,
   StreamEvent,
   WarehouseSnapshotPayload,
   WarehouseState,
@@ -28,12 +29,14 @@ import { Sidebar } from './Sidebar';
 import { MetricsStrip } from './MetricsStrip';
 import { InventoryTable } from './InventoryTable';
 import { SectionsView } from './SectionsView';
+import { FilesView } from './FilesView';
 import { MovementsView } from './MovementsView';
 import { OperatorsView } from './OperatorsView';
 import { MaterialModal } from './MaterialModal';
 import { SectionModal } from './SectionModal';
 import { AdjustStockModal } from './AdjustStockModal';
 import { TrackingLabelModal } from './TrackingLabelModal';
+import { QuickFileModal } from './QuickFileModal';
 
 const OP_STORAGE_KEY = 'kargobin_operator_id';
 const operatorListeners = new Set<() => void>();
@@ -50,7 +53,11 @@ function getOperatorSnapshot(fallbackId: string) {
 
 function writeOperatorStorage(nextId: string) {
   if (typeof window !== 'undefined') {
-    sessionStorage.setItem(OP_STORAGE_KEY, nextId);
+    if (nextId) {
+      sessionStorage.setItem(OP_STORAGE_KEY, nextId);
+    } else {
+      sessionStorage.removeItem(OP_STORAGE_KEY);
+    }
   }
   for (const listener of operatorListeners) {
     listener();
@@ -62,7 +69,7 @@ interface WarehouseWorkspaceProps {
 }
 
 export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps) {
-  const defaultOpId = initialSnapshot.state.operators[0]?.id ?? 'op-1';
+  const defaultOpId = initialSnapshot.state.operators[0]?.id ?? '';
   const [state, setState] = useState<WarehouseState>(initialSnapshot.state);
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>(
     initialSnapshot.activeSessions
@@ -93,9 +100,21 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
   const [editingSection, setEditingSection] = useState<Section | null>(null);
   const [adjustMaterial, setAdjustMaterial] = useState<Material | null>(null);
   const [labelMaterial, setLabelMaterial] = useState<Material | null>(null);
+
+  const [quickFileModal, setQuickFileModal] = useState<{
+    open: boolean;
+    fileId: string | null;
+    defaultFolder?: string;
+  }>({ open: false, fileId: null });
+
+  const [clearDataOpen, setClearDataOpen] = useState(false);
+  const [clearIncludeOperators, setClearIncludeOperators] = useState(false);
+  const [clearingData, setClearingData] = useState(false);
+
   const [confirmDelete, setConfirmDelete] = useState<
     | { kind: 'material'; item: Material }
     | { kind: 'section'; item: Section }
+    | { kind: 'file'; item: SharedFile }
     | null
   >(null);
 
@@ -232,9 +251,38 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
     [state.sections, filters.sectionId]
   );
 
+  const liveQuickFile = useMemo(
+    () =>
+      quickFileModal.fileId
+        ? state.files.find((f) => f.id === quickFileModal.fileId) ?? null
+        : null,
+    [quickFileModal.fileId, state.files]
+  );
+
   const applySnapshot = useCallback((data: WarehouseSnapshotPayload) => {
     setState((prev) => (data.state.version >= prev.version ? data.state : prev));
     setActiveSessions(data.activeSessions);
+  }, []);
+
+  const syncStreamPresence = useCallback((operatorId: string) => {
+    if (!clientIdRef.current) return;
+    void fetch('/api/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientId: clientIdRef.current,
+        operatorId,
+      }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { activeSessions?: ActiveSession[] } | null) => {
+        if (data?.activeSessions) {
+          setActiveSessions(data.activeSessions);
+        }
+      })
+      .catch(() => {
+        // Presence sync will recover on next heartbeat/reconnect
+      });
   }, []);
 
   const handleSwitchOperator = useCallback(
@@ -242,29 +290,11 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
       writeOperatorStorage(nextOpId);
       const nextOp = state.operators.find((o) => o.id === nextOpId);
       if (nextOp) {
-        showNotice('info', `Switched operator to ${nextOp.name} (${nextOp.role})`);
+        showNotice('info', `Switched account to ${nextOp.name} (${nextOp.role})`);
       }
-      if (clientIdRef.current) {
-        void fetch('/api/stream', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            clientId: clientIdRef.current,
-            operatorId: nextOpId,
-          }),
-        })
-          .then((res) => (res.ok ? res.json() : null))
-          .then((data: { activeSessions?: ActiveSession[] } | null) => {
-            if (data?.activeSessions) {
-              setActiveSessions(data.activeSessions);
-            }
-          })
-          .catch(() => {
-            // Presence sync will recover on next heartbeat/reconnect
-          });
-      }
+      syncStreamPresence(nextOpId);
     },
-    [state.operators, showNotice]
+    [state.operators, showNotice, syncStreamPresence]
   );
 
   const activeOpId = activeOperator?.id;
@@ -334,6 +364,61 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
     [activeOpId, applySnapshot]
   );
 
+  const handleSaveInlineMaterial = useCallback(
+    async (
+      material: Material,
+      updates: {
+        name: string;
+        sectionId: string;
+        quantity: number;
+        minThreshold: number;
+        lotNumber: string;
+      }
+    ) => {
+      return handleSaveMaterial({
+        id: material.id,
+        trackingCode: material.trackingCode,
+        category: material.category,
+        unit: material.unit,
+        name: updates.name,
+        sectionId: updates.sectionId,
+        quantity: updates.quantity,
+        minThreshold: updates.minThreshold,
+        lotNumber: updates.lotNumber,
+      });
+    },
+    [handleSaveMaterial]
+  );
+
+  const handleBulkAction = useCallback(
+    async (payload: {
+      ids: string[];
+      bulkAction: 'transfer' | 'delete';
+      targetSectionId?: string;
+    }): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const res = await fetch('/api/materials', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'bulk',
+            ...payload,
+            operatorId: activeOpId,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          return { ok: false, error: data.error || 'Bulk action failed.' };
+        }
+        applySnapshot(data);
+        return { ok: true };
+      } catch {
+        return { ok: false, error: 'Network error during bulk action.' };
+      }
+    },
+    [activeOpId, applySnapshot]
+  );
+
   const handleAdjustOrTransfer = useCallback(
     async (payload: {
       id: string;
@@ -397,6 +482,91 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
     [activeOpId, applySnapshot]
   );
 
+  const handleCreateFile = useCallback(
+    async (payload: {
+      name: string;
+      folder: string;
+      content: string;
+    }): Promise<{ ok: boolean; error?: string; file?: SharedFile }> => {
+      try {
+        const res = await fetch('/api/files', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...payload,
+            operatorId: activeOpId,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          return { ok: false, error: data.error || 'Failed to create file.' };
+        }
+        applySnapshot(data);
+        return { ok: true, file: data.file };
+      } catch {
+        return { ok: false, error: 'Network error while creating file.' };
+      }
+    },
+    [activeOpId, applySnapshot]
+  );
+
+  const handleUpdateFile = useCallback(
+    async (payload: {
+      id: string;
+      name: string;
+      folder: string;
+      content: string;
+    }): Promise<{ ok: boolean; error?: string; file?: SharedFile }> => {
+      try {
+        const res = await fetch('/api/files', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...payload,
+            operatorId: activeOpId,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          return { ok: false, error: data.error || 'Failed to save file.' };
+        }
+        applySnapshot(data);
+        return { ok: true, file: data.file };
+      } catch {
+        return { ok: false, error: 'Network error while saving file.' };
+      }
+    },
+    [activeOpId, applySnapshot]
+  );
+
+  const handleSaveQuickFile = useCallback(
+    async (payload: {
+      id?: string;
+      name: string;
+      folder: string;
+      content: string;
+    }) => {
+      if (payload.id) {
+        return handleUpdateFile({
+          id: payload.id,
+          name: payload.name,
+          folder: payload.folder,
+          content: payload.content,
+        });
+      }
+      return handleCreateFile({
+        name: payload.name,
+        folder: payload.folder,
+        content: payload.content,
+      });
+    },
+    [handleCreateFile, handleUpdateFile]
+  );
+
+  const handleDeleteFile = useCallback(async (file: SharedFile) => {
+    setConfirmDelete({ kind: 'file', item: file });
+  }, []);
+
   const handleConfirmDelete = useCallback(async () => {
     if (!confirmDelete) return;
     const opParam = activeOpId
@@ -407,7 +577,10 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
       const url =
         confirmDelete.kind === 'material'
           ? `/api/materials?id=${encodeURIComponent(confirmDelete.item.id)}${opParam}`
-          : `/api/sections?id=${encodeURIComponent(confirmDelete.item.id)}${opParam}`;
+          : confirmDelete.kind === 'section'
+            ? `/api/sections?id=${encodeURIComponent(confirmDelete.item.id)}${opParam}`
+            : `/api/files?id=${encodeURIComponent(confirmDelete.item.id)}${opParam}`;
+
       const res = await fetch(url, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) {
@@ -445,41 +618,112 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
         });
         const data = await res.json();
         if (!res.ok) {
-          return { ok: false, error: data.error || 'Failed to add operator.' };
+          return { ok: false, error: data.error || 'Failed to add user account.' };
         }
         applySnapshot(data);
+        if (!activeOpId && data.operator?.id) {
+          writeOperatorStorage(data.operator.id);
+          syncStreamPresence(data.operator.id);
+        }
         return { ok: true };
       } catch {
-        return { ok: false, error: 'Network error while creating operator.' };
+        return { ok: false, error: 'Network error while creating user account.' };
       }
     },
-    [activeOpId, applySnapshot]
+    [activeOpId, applySnapshot, syncStreamPresence]
   );
 
-  const handleUpdateOperatorRole = useCallback(
-    async (operatorId: string, role: OperatorRole) => {
+  const handleUpdateOperator = useCallback(
+    async (
+      operatorId: string,
+      updates: { name?: string; badgeCode?: string; role?: OperatorRole }
+    ): Promise<{ ok: boolean; error?: string }> => {
       try {
         const res = await fetch('/api/operators', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             id: operatorId,
-            role,
+            ...updates,
             actorId: activeOpId,
           }),
         });
         const data = await res.json();
         if (!res.ok) {
-          showNotice('error', data.error || 'Failed to update role.');
+          return { ok: false, error: data.error || 'Failed to update user account.' };
+        }
+        applySnapshot(data);
+        return { ok: true };
+      } catch {
+        return { ok: false, error: 'Network error while updating user account.' };
+      }
+    },
+    [activeOpId, applySnapshot]
+  );
+
+  const handleDeleteOperator = useCallback(
+    async (operatorId: string) => {
+      try {
+        const actorParam = activeOpId
+          ? `&actorId=${encodeURIComponent(activeOpId)}`
+          : '';
+        const res = await fetch(
+          `/api/operators?id=${encodeURIComponent(operatorId)}${actorParam}`,
+          { method: 'DELETE' }
+        );
+        const data = await res.json();
+        if (!res.ok) {
+          showNotice('error', data.error || 'Failed to delete user account.');
           return;
         }
         applySnapshot(data);
+        if (activeOpId === operatorId) {
+          const nextOpId = data.state?.operators?.[0]?.id ?? '';
+          writeOperatorStorage(nextOpId);
+          syncStreamPresence(nextOpId);
+        }
       } catch {
-        showNotice('error', 'Network error while updating operator role.');
+        showNotice('error', 'Network error while deleting user account.');
       }
     },
-    [activeOpId, applySnapshot, showNotice]
+    [activeOpId, applySnapshot, showNotice, syncStreamPresence]
   );
+
+  const handleClearAllData = useCallback(async () => {
+    setClearingData(true);
+    try {
+      const opParam = activeOpId
+        ? `&operatorId=${encodeURIComponent(activeOpId)}`
+        : '';
+      const res = await fetch(
+        `/api/warehouse?includeOperators=${clearIncludeOperators}${opParam}`,
+        { method: 'DELETE' }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        showNotice('error', data.error || 'Failed to clear warehouse data.');
+        return;
+      }
+      applySnapshot(data);
+      setFilters({
+        query: '',
+        sectionId: 'all',
+        status: 'all',
+        sortBy: 'updatedAt',
+        sortDir: 'desc',
+      });
+      if (clearIncludeOperators) {
+        writeOperatorStorage('');
+        syncStreamPresence('');
+      }
+      setClearDataOpen(false);
+      showNotice('info', 'All warehouse data has been cleared.');
+    } catch {
+      showNotice('error', 'Network error while clearing data.');
+    } finally {
+      setClearingData(false);
+    }
+  }, [activeOpId, applySnapshot, clearIncludeOperators, showNotice, syncStreamPresence]);
 
   const handleCloseMobile = useCallback(() => setMobileMenuOpen(false), []);
   const handleSelectSection = useCallback((sectionId: string | 'all') => {
@@ -491,6 +735,7 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
     setSectionModalOpen(true);
   }, []);
   const handleNavigateMovements = useCallback(() => setActiveTab('movements'), []);
+  const handleNavigateOperators = useCallback(() => setActiveTab('operators'), []);
   const handleFilterAlerts = useCallback(
     () =>
       setFilters((prev) => ({
@@ -534,25 +779,43 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
     (sec: Section) => setConfirmDelete({ kind: 'section', item: sec }),
     []
   );
+  const handleOpenQuickFile = useCallback(
+    (file: SharedFile | null, defaultFolder?: string) => {
+      setQuickFileModal({
+        open: true,
+        fileId: file?.id ?? null,
+        defaultFolder,
+      });
+    },
+    []
+  );
+  const handleOpenSectionFile = useCallback(
+    (sectionCode: string, existingFile: SharedFile | null) => {
+      setQuickFileModal({
+        open: true,
+        fileId: existingFile?.id ?? null,
+        defaultFolder: sectionCode,
+      });
+    },
+    []
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
       <TopBar
         activeTab={activeTab}
         onSelectTab={setActiveTab}
-        onOpenAddMaterial={() => {
-          setEditingMaterial(null);
-          setMaterialModalOpen(true);
-        }}
+        onOpenAddMaterial={handleOpenAddMaterial}
         onToggleMobileMenu={() => setMobileMenuOpen((v) => !v)}
       />
 
       {/* Mobile View Switcher (in-flow, non-sticky) */}
-      <div className="md:hidden bg-white border-b border-slate-200 px-3 py-2 flex items-center gap-1 overflow-x-auto">
+      <div className="md:hidden bg-white border-b border-slate-200 px-2 py-2 flex items-center justify-between gap-1 overflow-x-auto">
         {(
           [
             { id: 'inventory', label: 'Inventory' },
             { id: 'sections', label: 'Sections' },
+            { id: 'files', label: 'Files' },
             { id: 'movements', label: 'Movements' },
             { id: 'operators', label: 'Operators' },
           ] as const
@@ -561,7 +824,7 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
-            className={`px-3 py-1.5 text-xs font-medium rounded-md whitespace-nowrap shrink-0 ${
+            className={`px-2 py-1.5 text-[11px] font-medium rounded-md whitespace-nowrap shrink-0 ${
               activeTab === tab.id
                 ? 'bg-slate-900 text-white'
                 : 'text-slate-600 hover:bg-slate-100'
@@ -577,6 +840,7 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
           sections={state.sections}
           materials={state.materials}
           operators={state.operators}
+          files={state.files}
           activeOperator={activeOperator}
           activeSessions={activeSessions}
           recentMovements={state.movements}
@@ -588,6 +852,9 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
           onSwitchOperator={handleSwitchOperator}
           onOpenNewSection={handleOpenNewSection}
           onNavigateMovements={handleNavigateMovements}
+          onNavigateOperators={handleNavigateOperators}
+          onOpenQuickFile={handleOpenQuickFile}
+          onOpenClearData={() => setClearDataOpen(true)}
         />
 
         <main className="flex-1 min-w-0 p-4 lg:p-6 space-y-4">
@@ -640,6 +907,8 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
               <InventoryTable
                 materials={filteredMaterials}
                 sections={state.sections}
+                operatorCount={state.operators.length}
+                sectionCount={state.sections.length}
                 filters={filters}
                 loading={false}
                 busyMaterialId={busyMaterialId}
@@ -648,9 +917,14 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
                 onQuickDelta={handleQuickDelta}
                 onOpenAdjust={setAdjustMaterial}
                 onOpenEdit={handleOpenEditMaterial}
+                onSaveInlineEdit={handleSaveInlineMaterial}
+                onBulkAction={handleBulkAction}
                 onOpenLabel={setLabelMaterial}
                 onDelete={handleDeleteMaterial}
                 onOpenAddMaterial={handleOpenAddMaterial}
+                onOpenNewSection={handleOpenNewSection}
+                onNavigateOperators={handleNavigateOperators}
+                onOpenQuickFile={() => handleOpenQuickFile(null)}
               />
             </div>
           )}
@@ -659,10 +933,22 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
             <SectionsView
               sections={state.sections}
               materials={state.materials}
+              files={state.files}
               onOpenNewSection={handleOpenNewSection}
               onOpenEditSection={handleOpenEditSection}
               onDeleteSection={handleDeleteSection}
               onInspectSection={handleSelectSection}
+              onOpenSectionFile={handleOpenSectionFile}
+            />
+          )}
+
+          {activeTab === 'files' && (
+            <FilesView
+              files={state.files}
+              sections={state.sections}
+              onCreateFile={handleCreateFile}
+              onUpdateFile={handleUpdateFile}
+              onDeleteFile={handleDeleteFile}
             />
           )}
 
@@ -677,7 +963,8 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
               activeSessions={activeSessions}
               onSwitchOperator={handleSwitchOperator}
               onCreateOperator={handleCreateOperator}
-              onUpdateRole={handleUpdateOperatorRole}
+              onUpdateOperator={handleUpdateOperator}
+              onDeleteOperator={handleDeleteOperator}
             />
           )}
         </main>
@@ -697,6 +984,7 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
             setMaterialModalOpen(false);
             setEditingMaterial(null);
           }}
+          onOpenNewSection={handleOpenNewSection}
           onSubmit={handleSaveMaterial}
         />
       )}
@@ -732,6 +1020,61 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
         />
       )}
 
+      {quickFileModal.open && (
+        <QuickFileModal
+          key={`${quickFileModal.fileId ?? 'new-file'}-${quickFileModal.defaultFolder ?? 'General'}`}
+          file={liveQuickFile}
+          sections={state.sections}
+          defaultFolder={quickFileModal.defaultFolder}
+          onClose={() => setQuickFileModal({ open: false, fileId: null })}
+          onSaveFile={handleSaveQuickFile}
+        />
+      )}
+
+      {clearDataOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="clear-data-title"
+        >
+          <div className="w-full max-w-sm bg-white border border-slate-200 rounded-lg shadow-lg p-4 space-y-3">
+            <h2 id="clear-data-title" className="text-sm font-semibold text-slate-900">
+              Clear All Warehouse Data?
+            </h2>
+            <p className="text-xs text-slate-600">
+              This removes all sections, materials, shared files, and activity logs across all connected user accounts.
+            </p>
+            <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={clearIncludeOperators}
+                onChange={(e) => setClearIncludeOperators(e.target.checked)}
+                className="rounded border-slate-300 text-red-600 focus:ring-red-600"
+              />
+              Also remove all user accounts
+            </label>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setClearDataOpen(false)}
+                className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={clearingData}
+                onClick={handleClearAllData}
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 cursor-pointer"
+              >
+                {clearingData ? 'Clearing...' : 'Confirm Clear All'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmDelete && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"
@@ -743,12 +1086,16 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
             <h2 id="confirm-delete-title" className="text-sm font-semibold text-slate-900">
               {confirmDelete.kind === 'material'
                 ? `Delete ${confirmDelete.item.trackingCode}?`
-                : `Delete Section ${confirmDelete.item.code}?`}
+                : confirmDelete.kind === 'section'
+                  ? `Delete Section ${confirmDelete.item.code}?`
+                  : `Delete File ${confirmDelete.item.name}?`}
             </h2>
             <p className="text-xs text-slate-600">
               {confirmDelete.kind === 'material'
                 ? `Remove "${confirmDelete.item.name}" from active warehouse inventory. Historical movement logs are preserved.`
-                : `Permanently delete empty section "${confirmDelete.item.name}".`}
+                : confirmDelete.kind === 'section'
+                  ? `Permanently delete empty section "${confirmDelete.item.name}".`
+                  : `Remove shared file "${confirmDelete.item.name}" across all user accounts.`}
             </p>
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
@@ -772,3 +1119,4 @@ export function WarehouseWorkspace({ initialSnapshot }: WarehouseWorkspaceProps)
     </div>
   );
 }
+

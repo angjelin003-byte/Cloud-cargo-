@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   adjustOrTransferMaterial,
+  bulkMaterialsAction,
   createMaterialRecord,
   deleteMaterialRecord,
   updateMaterialMetadataRecord,
@@ -41,6 +42,27 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
+
+    if (body.action === 'bulk') {
+      const ids = Array.isArray(body.ids) ? body.ids.map(String) : [];
+      const bulkAction = body.bulkAction as 'transfer' | 'delete';
+      if (!['transfer', 'delete'].includes(bulkAction)) {
+        return NextResponse.json({ error: 'Invalid bulk action.' }, { status: 400 });
+      }
+      const result = bulkMaterialsAction(
+        {
+          ids,
+          action: bulkAction,
+          targetSectionId: body.targetSectionId ? String(body.targetSectionId) : undefined,
+        },
+        body.operatorId ? String(body.operatorId) : undefined
+      );
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
+      }
+      return NextResponse.json(result.data);
+    }
+
     const id = String(body.id ?? '');
     if (!id) {
       return NextResponse.json({ error: 'Material ID is required.' }, { status: 400 });

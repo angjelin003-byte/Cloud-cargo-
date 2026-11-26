@@ -1,14 +1,19 @@
 'use client';
 
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import {
   ArrowLeftRight,
   Barcode,
+  Check,
+  FilePlus2,
+  FolderPlus,
   Minus,
   Pencil,
   Plus,
   Search,
+  SlidersHorizontal,
   Trash2,
+  UserPlus,
   X,
 } from 'lucide-react';
 import type { Material, Section, StockStatus } from '@/lib/types';
@@ -18,6 +23,8 @@ import { FormattedTime } from './FormattedTime';
 interface InventoryTableProps {
   materials: Material[];
   sections: Section[];
+  operatorCount: number;
+  sectionCount: number;
   filters: MaterialFilters;
   loading: boolean;
   busyMaterialId: string | null;
@@ -26,9 +33,27 @@ interface InventoryTableProps {
   onQuickDelta: (material: Material, delta: number) => void;
   onOpenAdjust: (material: Material) => void;
   onOpenEdit: (material: Material) => void;
+  onSaveInlineEdit: (
+    material: Material,
+    updates: {
+      name: string;
+      sectionId: string;
+      quantity: number;
+      minThreshold: number;
+      lotNumber: string;
+    }
+  ) => Promise<{ ok: boolean; error?: string }>;
+  onBulkAction: (payload: {
+    ids: string[];
+    bulkAction: 'transfer' | 'delete';
+    targetSectionId?: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
   onOpenLabel: (material: Material) => void;
   onDelete: (material: Material) => void;
   onOpenAddMaterial: () => void;
+  onOpenNewSection: () => void;
+  onNavigateOperators: () => void;
+  onOpenQuickFile: () => void;
 }
 
 const STATUS_TABS: { value: StockStatus | 'all'; label: string }[] = [
@@ -41,6 +66,8 @@ const STATUS_TABS: { value: StockStatus | 'all'; label: string }[] = [
 export const InventoryTable = memo(function InventoryTable({
   materials,
   sections,
+  operatorCount,
+  sectionCount,
   filters,
   loading,
   busyMaterialId,
@@ -49,16 +76,112 @@ export const InventoryTable = memo(function InventoryTable({
   onQuickDelta,
   onOpenAdjust,
   onOpenEdit,
+  onSaveInlineEdit,
+  onBulkAction,
   onOpenLabel,
   onDelete,
   onOpenAddMaterial,
+  onOpenNewSection,
+  onNavigateOperators,
+  onOpenQuickFile,
 }: InventoryTableProps) {
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkSectionId, setBulkSectionId] = useState<string>('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [inlineError, setInlineError] = useState<string | null>(null);
+
+  const [inlineId, setInlineId] = useState<string | null>(null);
+  const [inlineName, setInlineName] = useState('');
+  const [inlineSectionId, setInlineSectionId] = useState('');
+  const [inlineQty, setInlineQty] = useState('0');
+  const [inlineMin, setInlineMin] = useState('0');
+  const [inlineLot, setInlineLot] = useState('');
+  const [inlineSaving, setInlineSaving] = useState(false);
+
   const sectionMap = useMemo(
     () => new Map(sections.map((s) => [s.id, s])),
     [sections]
   );
+
+  const visibleIdSet = useMemo(
+    () => new Set(materials.map((m) => m.id)),
+    [materials]
+  );
+
+  const effectiveSelectedIds = useMemo(
+    () => selectedIds.filter((id) => visibleIdSet.has(id)),
+    [selectedIds, visibleIdSet]
+  );
+
+  const allSelected =
+    materials.length > 0 && effectiveSelectedIds.length === materials.length;
+
   const hasActiveFilter =
     filters.query.trim() !== '' || filters.sectionId !== 'all' || filters.status !== 'all';
+
+  const resolvedBulkSectionId =
+    bulkSectionId && sections.some((s) => s.id === bulkSectionId)
+      ? bulkSectionId
+      : (sections[0]?.id ?? '');
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(materials.map((m) => m.id));
+    }
+  }
+
+  function toggleRowSelection(id: string) {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  }
+
+  function startInlineEdit(item: Material) {
+    setInlineError(null);
+    setInlineId(item.id);
+    setInlineName(item.name);
+    setInlineSectionId(item.sectionId);
+    setInlineQty(String(item.quantity));
+    setInlineMin(String(item.minThreshold));
+    setInlineLot(item.lotNumber ?? '');
+  }
+
+  async function saveInlineRow(item: Material) {
+    setInlineError(null);
+    setInlineSaving(true);
+    const res = await onSaveInlineEdit(item, {
+      name: inlineName,
+      sectionId: inlineSectionId,
+      quantity: Number(inlineQty),
+      minThreshold: Number(inlineMin),
+      lotNumber: inlineLot,
+    });
+    setInlineSaving(false);
+    if (!res.ok) {
+      setInlineError(res.error ?? 'Could not save inline changes.');
+      return;
+    }
+    setInlineId(null);
+  }
+
+  async function runBulk(action: 'transfer' | 'delete') {
+    if (effectiveSelectedIds.length === 0) return;
+    setInlineError(null);
+    setBulkBusy(true);
+    const res = await onBulkAction({
+      ids: effectiveSelectedIds,
+      bulkAction: action,
+      targetSectionId: action === 'transfer' ? resolvedBulkSectionId : undefined,
+    });
+    setBulkBusy(false);
+    if (!res.ok) {
+      setInlineError(res.error ?? 'Bulk operation failed.');
+      return;
+    }
+    setSelectedIds([]);
+  }
 
   return (
     <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
@@ -149,6 +272,75 @@ export const InventoryTable = memo(function InventoryTable({
         </div>
       </div>
 
+      {/* Bulk Action Bar */}
+      {effectiveSelectedIds.length > 0 && (
+        <div className="px-3 py-2 border-b border-blue-200 bg-blue-50/70 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="font-semibold text-blue-950 font-mono tabular-nums">
+            {effectiveSelectedIds.length} selected
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {sections.length > 0 && (
+              <>
+                <label htmlFor="bulk-target-section" className="sr-only">
+                  Target section for bulk move
+                </label>
+                <select
+                  id="bulk-target-section"
+                  value={resolvedBulkSectionId}
+                  onChange={(e) => setBulkSectionId(e.target.value)}
+                  className="h-7 px-2 text-xs bg-white border border-blue-200 rounded text-slate-800"
+                >
+                  {sections.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      Move to {s.code} — {s.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={bulkBusy || !resolvedBulkSectionId}
+                  onClick={() => runBulk('transfer')}
+                  className="h-7 px-2.5 font-medium text-white bg-blue-600 hover:bg-blue-700 rounded disabled:opacity-50 cursor-pointer"
+                >
+                  Move Selected
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={() => runBulk('delete')}
+              className="h-7 px-2.5 font-medium text-red-700 bg-white border border-red-200 hover:bg-red-50 rounded disabled:opacity-50 cursor-pointer"
+            >
+              Delete Selected
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedIds([])}
+              className="h-7 px-2 text-slate-600 hover:text-slate-900 cursor-pointer"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
+      {inlineError && (
+        <div
+          role="alert"
+          className="px-3 py-2 border-b border-red-200 bg-red-50 text-xs font-medium text-red-700 flex items-center justify-between gap-2"
+        >
+          <span>{inlineError}</span>
+          <button
+            type="button"
+            onClick={() => setInlineError(null)}
+            className="text-red-800 hover:underline cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Dense Operational Data Grid */}
       {loading ? (
         <div className="divide-y divide-slate-100" aria-busy="true" aria-label="Loading inventory">
@@ -164,14 +356,14 @@ export const InventoryTable = memo(function InventoryTable({
       ) : materials.length === 0 ? (
         <div className="py-12 px-4 text-center">
           <p className="text-sm font-semibold text-slate-900">
-            {hasActiveFilter ? 'No matching materials found' : 'No tracked materials yet'}
+            {hasActiveFilter ? 'No matching materials found' : 'Warehouse workspace is clean'}
           </p>
-          <p className="mt-1 text-xs text-slate-500 max-w-md mx-auto">
+          <p className="mt-1 text-xs text-slate-500 max-w-lg mx-auto">
             {hasActiveFilter
               ? 'Try clearing your section or search query filters to view all warehouse inventory.'
-              : 'Register your first material with a unique tracking code and section assignment.'}
+              : 'All sample data is cleared. Create user accounts, add warehouse sections with tracking prefixes, register materials, or create shared files.'}
           </p>
-          <div className="mt-4">
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
             {hasActiveFilter ? (
               <button
                 type="button"
@@ -181,13 +373,45 @@ export const InventoryTable = memo(function InventoryTable({
                 Reset Filters
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={onOpenAddMaterial}
-                className="px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 rounded-md hover:bg-slate-800 cursor-pointer"
-              >
-                Add First Material
-              </button>
+              <>
+                {operatorCount === 0 && (
+                  <button
+                    type="button"
+                    onClick={onNavigateOperators}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 cursor-pointer"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" aria-hidden="true" />
+                    Add User Account
+                  </button>
+                )}
+                {sectionCount === 0 ? (
+                  <button
+                    type="button"
+                    onClick={onOpenNewSection}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 rounded-md hover:bg-slate-800 cursor-pointer"
+                  >
+                    <FolderPlus className="w-3.5 h-3.5" aria-hidden="true" />
+                    Create First Section
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onOpenAddMaterial}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 rounded-md hover:bg-slate-800 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                    Add First Material
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onOpenQuickFile}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md hover:bg-slate-50 cursor-pointer"
+                >
+                  <FilePlus2 className="w-3.5 h-3.5" aria-hidden="true" />
+                  Create Shared File
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -196,6 +420,15 @@ export const InventoryTable = memo(function InventoryTable({
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-500">
+                <th className="py-2 pl-3 pr-1 w-8">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all visible materials"
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-600 cursor-pointer"
+                  />
+                </th>
                 <th className="py-2 px-3 whitespace-nowrap">Tracking Code</th>
                 <th className="py-2 px-3 whitespace-nowrap">Material</th>
                 <th className="py-2 px-3 whitespace-nowrap">Section</th>
@@ -210,12 +443,30 @@ export const InventoryTable = memo(function InventoryTable({
                 const sec = sectionMap.get(item.sectionId);
                 const status = getStockStatus(item.quantity, item.minThreshold);
                 const isBusy = busyMaterialId === item.id;
+                const isSelected = effectiveSelectedIds.includes(item.id);
+                const isInline = inlineId === item.id;
 
                 return (
                   <tr
                     key={item.id}
-                    className="hover:bg-slate-50/80 transition-colors group"
+                    className={`transition-colors group ${
+                      isInline
+                        ? 'bg-blue-50/40'
+                        : isSelected
+                          ? 'bg-blue-50/30 hover:bg-blue-50/50'
+                          : 'hover:bg-slate-50/80'
+                    }`}
                   >
+                    <td className="py-2 pl-3 pr-1">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${item.trackingCode}`}
+                        checked={isSelected}
+                        onChange={() => toggleRowSelection(item.id)}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-600 cursor-pointer"
+                      />
+                    </td>
+
                     {/* Tracking Code */}
                     <td className="py-2 px-3 whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
@@ -234,59 +485,126 @@ export const InventoryTable = memo(function InventoryTable({
                       </div>
                     </td>
 
-                    {/* Material Name & Unboxed Metadata */}
+                    {/* Material Name & Lot (inline editable) */}
                     <td className="py-2 px-3 min-w-[200px]">
-                      <div className="font-medium text-slate-900 leading-tight">{item.name}</div>
-                      <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
-                        <span>{item.category}</span>
-                        <span aria-hidden="true">·</span>
-                        <span className="font-mono">{item.lotNumber || 'No lot'}</span>
-                      </div>
+                      {isInline ? (
+                        <div className="space-y-1">
+                          <input
+                            type="text"
+                            aria-label={`Inline name for ${item.trackingCode}`}
+                            value={inlineName}
+                            onChange={(e) => setInlineName(e.target.value)}
+                            className="w-full h-7 px-2 text-xs bg-white border border-blue-400 rounded"
+                          />
+                          <input
+                            type="text"
+                            aria-label={`Inline lot for ${item.trackingCode}`}
+                            value={inlineLot}
+                            onChange={(e) => setInlineLot(e.target.value.toUpperCase())}
+                            placeholder="Lot #"
+                            className="w-28 h-6 px-1.5 text-[11px] font-mono uppercase bg-white border border-slate-300 rounded"
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="font-medium text-slate-900 leading-tight">{item.name}</div>
+                          <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                            <span>{item.category}</span>
+                            <span aria-hidden="true">·</span>
+                            <span className="font-mono">{item.lotNumber || 'No lot'}</span>
+                          </div>
+                        </>
+                      )}
                     </td>
 
-                    {/* Section Code + Name */}
+                    {/* Section Code + Name (inline editable) */}
                     <td className="py-2 px-3 whitespace-nowrap">
-                      <div className="font-mono font-semibold text-slate-800">
-                        {sec?.code ?? 'UNASSIGNED'}
-                      </div>
-                      <div className="text-[11px] text-slate-500 truncate max-w-[130px]">
-                        {sec?.name ?? 'Unknown section'}
-                      </div>
+                      {isInline ? (
+                        <select
+                          aria-label={`Inline section for ${item.trackingCode}`}
+                          value={inlineSectionId}
+                          onChange={(e) => setInlineSectionId(e.target.value)}
+                          className="h-7 px-2 text-xs bg-white border border-blue-400 rounded max-w-[160px]"
+                        >
+                          {sections.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.code} — {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <>
+                          <div className="font-mono font-semibold text-slate-800">
+                            {sec?.code ?? 'UNASSIGNED'}
+                          </div>
+                          <div className="text-[11px] text-slate-500 truncate max-w-[130px]">
+                            {sec?.name ?? 'Unknown section'}
+                          </div>
+                        </>
+                      )}
                     </td>
 
                     {/* Stock Quantity + Inline Quick Steppers */}
                     <td className="py-2 px-3 whitespace-nowrap text-right">
-                      <div className="inline-flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          disabled={isBusy || item.quantity <= 0}
-                          onClick={() => onQuickDelta(item, -1)}
-                          aria-label={`Decrease stock for ${item.trackingCode}`}
-                          className="w-6 h-6 inline-flex items-center justify-center rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                          <Minus className="w-3 h-3" />
-                        </button>
-                        <span className="font-mono tabular-nums font-semibold text-slate-900 w-20 text-center truncate">
-                          {item.quantity}{' '}
-                          <span className="font-sans font-normal text-slate-500 text-[11px]">
-                            {item.unit}
+                      {isInline ? (
+                        <div className="inline-flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            aria-label={`Inline quantity for ${item.trackingCode}`}
+                            value={inlineQty}
+                            onChange={(e) => setInlineQty(e.target.value)}
+                            className="w-20 h-7 px-2 text-xs font-mono tabular-nums text-right bg-white border border-blue-400 rounded"
+                          />
+                          <span className="text-[11px] text-slate-500">{item.unit}</span>
+                        </div>
+                      ) : (
+                        <div className="inline-flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            disabled={isBusy || item.quantity <= 0}
+                            onClick={() => onQuickDelta(item, -1)}
+                            aria-label={`Decrease stock for ${item.trackingCode}`}
+                            className="w-6 h-6 inline-flex items-center justify-center rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="font-mono tabular-nums font-semibold text-slate-900 w-20 text-center truncate">
+                            {item.quantity}{' '}
+                            <span className="font-sans font-normal text-slate-500 text-[11px]">
+                              {item.unit}
+                            </span>
                           </span>
-                        </span>
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => onQuickDelta(item, 1)}
-                          aria-label={`Increase stock for ${item.trackingCode}`}
-                          className="w-6 h-6 inline-flex items-center justify-center rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40 cursor-pointer"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
-                      </div>
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => onQuickDelta(item, 1)}
+                            aria-label={`Increase stock for ${item.trackingCode}`}
+                            className="w-6 h-6 inline-flex items-center justify-center rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40 cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
                     </td>
 
-                    {/* Semantic Stock Status (unboxed text, zero-pill) */}
+                    {/* Semantic Stock Status / Inline Min Threshold */}
                     <td className="py-2 px-3 whitespace-nowrap">
-                      {status === 'out' ? (
+                      {isInline ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] text-slate-500">Min</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            aria-label={`Inline min threshold for ${item.trackingCode}`}
+                            value={inlineMin}
+                            onChange={(e) => setInlineMin(e.target.value)}
+                            className="w-16 h-7 px-2 text-xs font-mono tabular-nums bg-white border border-slate-300 rounded"
+                          />
+                        </div>
+                      ) : status === 'out' ? (
                         <span className="font-semibold text-red-700">
                           Out of Stock
                         </span>
@@ -311,33 +629,69 @@ export const InventoryTable = memo(function InventoryTable({
 
                     {/* Row Actions */}
                     <td className="py-2 px-3 whitespace-nowrap text-right">
-                      <div className="inline-flex items-center justify-end gap-1">
-                        <button
-                          type="button"
-                          onClick={() => onOpenAdjust(item)}
-                          aria-label={`Adjust or transfer ${item.trackingCode}`}
-                          className="px-2 py-1 text-[11px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200/80 inline-flex items-center gap-1 cursor-pointer"
-                        >
-                          <ArrowLeftRight className="w-3 h-3" aria-hidden="true" />
-                          Move
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onOpenEdit(item)}
-                          aria-label={`Edit ${item.trackingCode}`}
-                          className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded cursor-pointer"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onDelete(item)}
-                          aria-label={`Delete ${item.trackingCode}`}
-                          className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      {isInline ? (
+                        <div className="inline-flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            disabled={inlineSaving}
+                            onClick={() => saveInlineRow(item)}
+                            aria-label={`Save inline edit for ${item.trackingCode}`}
+                            className="px-2 py-1 text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          >
+                            <Check className="w-3 h-3" />
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInlineId(null);
+                              setInlineError(null);
+                            }}
+                            aria-label={`Cancel inline edit for ${item.trackingCode}`}
+                            className="p-1 text-slate-500 hover:bg-slate-100 rounded cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="inline-flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => onOpenAdjust(item)}
+                            aria-label={`Adjust or transfer ${item.trackingCode}`}
+                            className="px-2 py-1 text-[11px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200/80 inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <ArrowLeftRight className="w-3 h-3" aria-hidden="true" />
+                            Move
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => startInlineEdit(item)}
+                            aria-label={`Inline edit ${item.trackingCode}`}
+                            title="Inline edit row"
+                            className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded cursor-pointer"
+                          >
+                            <SlidersHorizontal className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onOpenEdit(item)}
+                            aria-label={`Edit ${item.trackingCode}`}
+                            title="Full edit modal"
+                            className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded cursor-pointer"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onDelete(item)}
+                            aria-label={`Delete ${item.trackingCode}`}
+                            className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -349,3 +703,4 @@ export const InventoryTable = memo(function InventoryTable({
     </div>
   );
 });
+

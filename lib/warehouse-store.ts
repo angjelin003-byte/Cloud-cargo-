@@ -9,6 +9,7 @@ import type {
   Operator,
   OperatorRole,
   Section,
+  SharedFile,
   StreamEvent,
   WarehouseSnapshotPayload,
   WarehouseState,
@@ -16,10 +17,12 @@ import type {
 import {
   applyStockDelta,
   normalizeCode,
+  validateFileInput,
   validateMaterialInput,
   validateSectionInput,
   type MaterialInput,
   type SectionInput,
+  type SharedFileInput,
 } from './warehouse-logic';
 
 type Subscriber = (chunk: Uint8Array) => void;
@@ -47,296 +50,13 @@ export function encodeSseEvent(event: StreamEvent): Uint8Array {
 }
 
 function createSeedState(): WarehouseState {
-  const baseTime = '2026-11-23T08:30:00.000Z';
-
-  const operators: Operator[] = [
-    {
-      id: 'op-1',
-      name: 'Elena Vance',
-      badgeCode: 'OP-101',
-      role: 'Admin',
-      active: true,
-      createdAt: baseTime,
-    },
-    {
-      id: 'op-2',
-      name: 'Marcus Chen',
-      badgeCode: 'OP-104',
-      role: 'Supervisor',
-      active: true,
-      createdAt: baseTime,
-    },
-    {
-      id: 'op-3',
-      name: 'Priya Nair',
-      badgeCode: 'OP-109',
-      role: 'Operator',
-      active: true,
-      createdAt: baseTime,
-    },
-    {
-      id: 'op-4',
-      name: 'David Kowalski',
-      badgeCode: 'OP-112',
-      role: 'Operator',
-      active: true,
-      createdAt: baseTime,
-    },
-  ];
-
-  const sections: Section[] = [
-    {
-      id: 'sec-a01',
-      code: 'A-01',
-      name: 'Structural Metals',
-      zone: 'Zone A · Bay 1',
-      capacity: 600,
-      description: 'Extruded aluminum profiles, steel plates, and alloy bars',
-      createdAt: baseTime,
-      updatedAt: baseTime,
-    },
-    {
-      id: 'sec-b04',
-      code: 'B-04',
-      name: 'Fasteners & Anchors',
-      zone: 'Zone B · Rack 4',
-      capacity: 1500,
-      description: 'Metric hex bolts, lock nuts, washers, and anchor sleeves',
-      createdAt: baseTime,
-      updatedAt: baseTime,
-    },
-    {
-      id: 'sec-c02',
-      code: 'C-02',
-      name: 'Electrical & Sensors',
-      zone: 'Zone C · ESD Cage',
-      capacity: 450,
-      description: 'Proximity sensors, DIN relays, shielded cable reels',
-      createdAt: baseTime,
-      updatedAt: baseTime,
-    },
-    {
-      id: 'sec-d01',
-      code: 'D-01',
-      name: 'Packaging & Pallets',
-      zone: 'Zone D · Dock',
-      capacity: 900,
-      description: 'Corrugated cartons, stretch wrap rolls, pallet strapping',
-      createdAt: baseTime,
-      updatedAt: baseTime,
-    },
-    {
-      id: 'sec-e03',
-      code: 'E-03',
-      name: 'Sealants & Adhesives',
-      zone: 'Zone E · Climate',
-      capacity: 300,
-      description: 'Industrial epoxy cartridges, silicone sealants, primers',
-      createdAt: baseTime,
-      updatedAt: baseTime,
-    },
-  ];
-
-  const materials: Material[] = [
-    {
-      id: 'mat-1',
-      trackingCode: 'A01-ALU-001',
-      name: 'Aluminum Sheet 6061-T6 (3mm)',
-      category: 'Metals',
-      sectionId: 'sec-a01',
-      quantity: 48,
-      unit: 'sheets',
-      minThreshold: 15,
-      lotNumber: 'LOT-2611A',
-      updatedAt: '2026-11-23T09:15:00.000Z',
-      updatedBy: 'Elena Vance',
-    },
-    {
-      id: 'mat-2',
-      trackingCode: 'A01-STL-002',
-      name: 'Cold-Rolled Steel Rod 16mm',
-      category: 'Metals',
-      sectionId: 'sec-a01',
-      quantity: 120,
-      unit: 'bars',
-      minThreshold: 30,
-      lotNumber: 'LOT-2610S',
-      updatedAt: '2026-11-23T09:20:00.000Z',
-      updatedBy: 'Marcus Chen',
-    },
-    {
-      id: 'mat-3',
-      trackingCode: 'B04-HEX-001',
-      name: 'M8x30 Stainless Hex Bolt',
-      category: 'Fasteners',
-      sectionId: 'sec-b04',
-      quantity: 14,
-      unit: 'boxes',
-      minThreshold: 20,
-      lotNumber: 'LOT-884B',
-      updatedAt: '2026-11-23T09:42:00.000Z',
-      updatedBy: 'Priya Nair',
-    },
-    {
-      id: 'mat-4',
-      trackingCode: 'B04-LCK-002',
-      name: 'M8 Nyloc Flange Nut',
-      category: 'Fasteners',
-      sectionId: 'sec-b04',
-      quantity: 65,
-      unit: 'boxes',
-      minThreshold: 15,
-      lotNumber: 'LOT-885N',
-      updatedAt: '2026-11-23T09:30:00.000Z',
-      updatedBy: 'Priya Nair',
-    },
-    {
-      id: 'mat-5',
-      trackingCode: 'C02-PRX-001',
-      name: 'Inductive Proximity Sensor 24V',
-      category: 'Electrical',
-      sectionId: 'sec-c02',
-      quantity: 0,
-      unit: 'pcs',
-      minThreshold: 12,
-      lotNumber: 'LOT-402E',
-      updatedAt: '2026-11-23T10:05:00.000Z',
-      updatedBy: 'Marcus Chen',
-    },
-    {
-      id: 'mat-6',
-      trackingCode: 'C02-DIN-002',
-      name: '24VDC DIN-Rail Relay Module',
-      category: 'Electrical',
-      sectionId: 'sec-c02',
-      quantity: 34,
-      unit: 'pcs',
-      minThreshold: 10,
-      lotNumber: 'LOT-409R',
-      updatedAt: '2026-11-23T09:50:00.000Z',
-      updatedBy: 'David Kowalski',
-    },
-    {
-      id: 'mat-7',
-      trackingCode: 'C02-CBL-003',
-      name: 'Shielded Control Cable 4-Core',
-      category: 'Electrical',
-      sectionId: 'sec-c02',
-      quantity: 7,
-      unit: 'reels',
-      minThreshold: 8,
-      lotNumber: 'LOT-412C',
-      updatedAt: '2026-11-23T10:12:00.000Z',
-      updatedBy: 'David Kowalski',
-    },
-    {
-      id: 'mat-8',
-      trackingCode: 'D01-STR-001',
-      name: 'Heavy Pallet Stretch Film 500mm',
-      category: 'Packaging',
-      sectionId: 'sec-d01',
-      quantity: 92,
-      unit: 'rolls',
-      minThreshold: 25,
-      lotNumber: 'LOT-711P',
-      updatedAt: '2026-11-23T09:10:00.000Z',
-      updatedBy: 'Priya Nair',
-    },
-    {
-      id: 'mat-9',
-      trackingCode: 'D01-BOX-002',
-      name: 'Double-Wall Shipping Carton 40x30',
-      category: 'Packaging',
-      sectionId: 'sec-d01',
-      quantity: 210,
-      unit: 'pcs',
-      minThreshold: 50,
-      lotNumber: 'LOT-718K',
-      updatedAt: '2026-11-23T09:12:00.000Z',
-      updatedBy: 'Elena Vance',
-    },
-    {
-      id: 'mat-10',
-      trackingCode: 'E03-EPX-001',
-      name: 'Two-Part Structural Epoxy 400ml',
-      category: 'Chemicals',
-      sectionId: 'sec-e03',
-      quantity: 9,
-      unit: 'tubes',
-      minThreshold: 10,
-      lotNumber: 'LOT-903X',
-      updatedAt: '2026-11-23T10:22:00.000Z',
-      updatedBy: 'Marcus Chen',
-    },
-    {
-      id: 'mat-11',
-      trackingCode: 'E03-SIL-002',
-      name: 'High-Temp Silicone Gasket Sealant',
-      category: 'Chemicals',
-      sectionId: 'sec-e03',
-      quantity: 28,
-      unit: 'tubes',
-      minThreshold: 8,
-      lotNumber: 'LOT-907G',
-      updatedAt: '2026-11-23T09:45:00.000Z',
-      updatedBy: 'Elena Vance',
-    },
-  ];
-
-  const movements: Movement[] = [
-    {
-      id: 'mov-1',
-      type: 'OUTBOUND',
-      materialId: 'mat-10',
-      trackingCode: 'E03-EPX-001',
-      materialName: 'Two-Part Structural Epoxy 400ml',
-      sectionCode: 'E-03',
-      delta: -6,
-      newQuantity: 9,
-      operatorId: 'op-2',
-      operatorName: 'Marcus Chen',
-      operatorRole: 'Supervisor',
-      note: 'Issued to Assembly Line 2',
-      timestamp: '2026-11-23T10:22:00.000Z',
-    },
-    {
-      id: 'mov-2',
-      type: 'OUTBOUND',
-      materialId: 'mat-5',
-      trackingCode: 'C02-PRX-001',
-      materialName: 'Inductive Proximity Sensor 24V',
-      sectionCode: 'C-02',
-      delta: -12,
-      newQuantity: 0,
-      operatorId: 'op-2',
-      operatorName: 'Marcus Chen',
-      operatorRole: 'Supervisor',
-      note: 'Dispatched for Maintenance WO-441',
-      timestamp: '2026-11-23T10:05:00.000Z',
-    },
-    {
-      id: 'mov-3',
-      type: 'INBOUND',
-      materialId: 'mat-8',
-      trackingCode: 'D01-STR-001',
-      materialName: 'Heavy Pallet Stretch Film 500mm',
-      sectionCode: 'D-01',
-      delta: 40,
-      newQuantity: 92,
-      operatorId: 'op-3',
-      operatorName: 'Priya Nair',
-      operatorRole: 'Operator',
-      note: 'Dock Gate 3 receiving PO-9921',
-      timestamp: '2026-11-23T09:10:00.000Z',
-    },
-  ];
-
   return {
     version: 1,
-    sections,
-    materials,
-    operators,
-    movements,
+    sections: [],
+    materials: [],
+    operators: [],
+    movements: [],
+    files: [],
   };
 }
 
@@ -344,7 +64,7 @@ function loadStateFromDisk(): WarehouseState {
   try {
     if (fs.existsSync(DATA_FILE)) {
       const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-      const parsed = JSON.parse(raw) as WarehouseState;
+      const parsed = JSON.parse(raw) as Partial<WarehouseState>;
       if (
         parsed &&
         Array.isArray(parsed.sections) &&
@@ -352,11 +72,18 @@ function loadStateFromDisk(): WarehouseState {
         Array.isArray(parsed.operators) &&
         Array.isArray(parsed.movements)
       ) {
-        return parsed;
+        return {
+          version: typeof parsed.version === 'number' ? parsed.version : 1,
+          sections: parsed.sections,
+          materials: parsed.materials,
+          operators: parsed.operators,
+          movements: parsed.movements,
+          files: Array.isArray(parsed.files) ? parsed.files : [],
+        };
       }
     }
   } catch {
-    // Fall back to fresh seed state on unreadable file
+    // Fall back to fresh empty state on unreadable file
   }
   const seed = createSeedState();
   try {
@@ -449,19 +176,17 @@ export function subscribeToStream(
       hub.state.operators.find((o) => o.id === sessionInfo.operatorId && o.active) ??
       hub.state.operators.find((o) => o.active) ??
       hub.state.operators[0];
-    if (operator) {
-      hub.sessions.set(sessionInfo.clientId, {
-        clientId: sessionInfo.clientId,
-        operatorId: operator.id,
-        operatorName: operator.name,
-        operatorRole: operator.role,
-        connectedAt: new Date().toISOString(),
-      });
-      broadcast({
-        type: 'presence:update',
-        activeSessions: Array.from(hub.sessions.values()),
-      });
-    }
+    hub.sessions.set(sessionInfo.clientId, {
+      clientId: sessionInfo.clientId,
+      operatorId: operator?.id ?? 'op-guest',
+      operatorName: operator?.name ?? 'Workspace User',
+      operatorRole: operator?.role ?? 'Operator',
+      connectedAt: new Date().toISOString(),
+    });
+    broadcast({
+      type: 'presence:update',
+      activeSessions: Array.from(hub.sessions.values()),
+    });
   }
 
   hub.subscribers.add(subscriber);
@@ -487,13 +212,13 @@ export function updateSessionOperator(
     hub.state.operators.find((o) => o.id === operatorId && o.active) ??
     hub.state.operators.find((o) => o.active) ??
     hub.state.operators[0];
-  if (clientId && operator) {
+  if (clientId) {
     const existing = hub.sessions.get(clientId);
     hub.sessions.set(clientId, {
       clientId,
-      operatorId: operator.id,
-      operatorName: operator.name,
-      operatorRole: operator.role,
+      operatorId: operator?.id ?? 'op-guest',
+      operatorName: operator?.name ?? 'Workspace User',
+      operatorRole: operator?.role ?? 'Operator',
       connectedAt: existing?.connectedAt ?? new Date().toISOString(),
     });
     const activeSessions = Array.from(hub.sessions.values());
@@ -506,12 +231,22 @@ export function updateSessionOperator(
   return Array.from(hub.sessions.values());
 }
 
+const GUEST_OPERATOR: Operator = {
+  id: 'op-guest',
+  name: 'Workspace User',
+  badgeCode: 'USR-000',
+  role: 'Admin',
+  active: true,
+  createdAt: '2026-11-24T00:00:00.000Z',
+};
+
 function resolveOperator(operatorId?: string): Operator {
   const hub = getHub();
   return (
     hub.state.operators.find((o) => o.id === operatorId && o.active) ??
     hub.state.operators.find((o) => o.active) ??
-    hub.state.operators[0]
+    hub.state.operators[0] ??
+    GUEST_OPERATOR
   );
 }
 
@@ -967,7 +702,7 @@ export function createOperatorRecord(
 
 export function updateOperatorRoleRecord(
   id: string,
-  updates: { role?: OperatorRole; active?: boolean },
+  updates: { name?: string; badgeCode?: string; role?: OperatorRole; active?: boolean },
   actorId?: string
 ): { ok: true; data: WarehouseSnapshotPayload } | { ok: false; status: number; error: string } {
   const hub = getHub();
@@ -976,19 +711,48 @@ export function updateOperatorRoleRecord(
     return { ok: false, status: 404, error: 'Operator not found.' };
   }
 
-  if (updates.active === false) {
-    const activeAdmins = hub.state.operators.filter((o) => o.active && o.role === 'Admin');
-    if (target.role === 'Admin' && activeAdmins.length <= 1) {
-      return { ok: false, status: 400, error: 'At least one active Admin operator is required.' };
-    }
+  const nextName = updates.name !== undefined ? updates.name.trim() : target.name;
+  if (!nextName || nextName.length < 2 || nextName.length > 50) {
+    return { ok: false, status: 400, error: 'Operator name must be between 2 and 50 characters.' };
+  }
+
+  const nextBadge =
+    updates.badgeCode !== undefined ? normalizeCode(updates.badgeCode) : target.badgeCode;
+  if (!nextBadge || nextBadge.length < 3 || nextBadge.length > 16) {
+    return { ok: false, status: 400, error: 'Badge code must be 3–16 characters (e.g. OP-120).' };
+  }
+  if (
+    hub.state.operators.some(
+      (o) => o.id !== id && o.badgeCode.toUpperCase() === nextBadge
+    )
+  ) {
+    return { ok: false, status: 409, error: `Badge code "${nextBadge}" is already assigned.` };
+  }
+
+  const validRoles: OperatorRole[] = ['Admin', 'Supervisor', 'Operator'];
+  const nextRole = updates.role ?? target.role;
+  if (!validRoles.includes(nextRole)) {
+    return { ok: false, status: 400, error: 'Invalid operator role.' };
   }
 
   const actor = resolveOperator(actorId);
   const updated: Operator = {
     ...target,
-    role: updates.role ?? target.role,
+    name: nextName,
+    badgeCode: nextBadge,
+    role: nextRole,
     active: updates.active ?? target.active,
   };
+
+  for (const [cid, session] of hub.sessions.entries()) {
+    if (session.operatorId === id) {
+      hub.sessions.set(cid, {
+        ...session,
+        operatorName: updated.name,
+        operatorRole: updated.role,
+      });
+    }
+  }
 
   const data = commitMutation(
     {
@@ -1003,4 +767,329 @@ export function updateOperatorRoleRecord(
   );
 
   return { ok: true, data };
+}
+
+export function deleteOperatorRecord(
+  id: string,
+  actorId?: string
+): { ok: true; data: WarehouseSnapshotPayload } | { ok: false; status: number; error: string } {
+  const hub = getHub();
+  const target = hub.state.operators.find((o) => o.id === id);
+  if (!target) {
+    return { ok: false, status: 404, error: 'Operator not found.' };
+  }
+
+  const actor = resolveOperator(actorId);
+  const remaining = hub.state.operators.filter((o) => o.id !== id);
+  const fallback = remaining[0];
+  for (const [cid, session] of hub.sessions.entries()) {
+    if (session.operatorId === id) {
+      hub.sessions.set(cid, {
+        ...session,
+        operatorId: fallback?.id ?? 'op-guest',
+        operatorName: fallback?.name ?? 'Workspace User',
+        operatorRole: fallback?.role ?? 'Operator',
+      });
+    }
+  }
+
+  const data = commitMutation(
+    {
+      ...hub.state,
+      operators: remaining,
+    },
+    {
+      action: 'operator:deleted',
+      actorName: actor.name,
+      summary: `${actor.name} removed user ${target.name} (${target.badgeCode})`,
+    }
+  );
+
+  return { ok: true, data };
+}
+
+export function createFileRecord(
+  input: SharedFileInput,
+  operatorId?: string
+): { ok: true; data: WarehouseSnapshotPayload; file: SharedFile } | { ok: false; status: number; error: string } {
+  const hub = getHub();
+  const validation = validateFileInput(input, hub.state.files);
+  if (!validation.ok || !validation.value) {
+    return { ok: false, status: 400, error: validation.error ?? 'Invalid file input.' };
+  }
+
+  const actor = resolveOperator(operatorId);
+  const now = new Date().toISOString();
+  const file: SharedFile = {
+    id: `file-${crypto.randomUUID().slice(0, 8)}`,
+    name: validation.value.name,
+    folder: validation.value.folder,
+    content: validation.value.content,
+    revision: 1,
+    updatedAt: now,
+    updatedBy: actor.name,
+    updatedById: actor.id,
+  };
+
+  const movement: Movement = {
+    id: `mov-${crypto.randomUUID().slice(0, 8)}`,
+    type: 'FILE_CREATED',
+    materialId: file.id,
+    trackingCode: `FILE:${file.name}`,
+    materialName: file.name,
+    sectionCode: file.folder,
+    delta: 0,
+    newQuantity: file.revision,
+    operatorId: actor.id,
+    operatorName: actor.name,
+    operatorRole: actor.role,
+    note: `Created shared file in ${file.folder} (rev 1)`,
+    timestamp: now,
+  };
+
+  const data = commitMutation(
+    {
+      ...hub.state,
+      files: [file, ...hub.state.files],
+      movements: [movement, ...hub.state.movements],
+    },
+    {
+      action: 'file:created',
+      actorName: actor.name,
+      summary: `${actor.name} created file ${file.name} (${file.folder})`,
+    }
+  );
+
+  return { ok: true, data, file };
+}
+
+export function updateFileRecord(
+  id: string,
+  input: SharedFileInput,
+  operatorId?: string
+): { ok: true; data: WarehouseSnapshotPayload; file: SharedFile } | { ok: false; status: number; error: string } {
+  const hub = getHub();
+  const existing = hub.state.files.find((f) => f.id === id);
+  if (!existing) {
+    return { ok: false, status: 404, error: 'File not found.' };
+  }
+
+  const validation = validateFileInput(input, hub.state.files, id);
+  if (!validation.ok || !validation.value) {
+    return { ok: false, status: 400, error: validation.error ?? 'Invalid file input.' };
+  }
+
+  const actor = resolveOperator(operatorId);
+  const now = new Date().toISOString();
+  const updated: SharedFile = {
+    ...existing,
+    name: validation.value.name,
+    folder: validation.value.folder,
+    content: validation.value.content,
+    revision: existing.revision + 1,
+    updatedAt: now,
+    updatedBy: actor.name,
+    updatedById: actor.id,
+  };
+
+  const movement: Movement = {
+    id: `mov-${crypto.randomUUID().slice(0, 8)}`,
+    type: 'FILE_UPDATED',
+    materialId: updated.id,
+    trackingCode: `FILE:${updated.name}`,
+    materialName: updated.name,
+    sectionCode: updated.folder,
+    previousSectionCode: existing.folder !== updated.folder ? existing.folder : undefined,
+    delta: 0,
+    newQuantity: updated.revision,
+    operatorId: actor.id,
+    operatorName: actor.name,
+    operatorRole: actor.role,
+    note: `Saved revision ${updated.revision} (${updated.content.length} chars)`,
+    timestamp: now,
+  };
+
+  const data = commitMutation(
+    {
+      ...hub.state,
+      files: hub.state.files.map((f) => (f.id === id ? updated : f)),
+      movements: [movement, ...hub.state.movements],
+    },
+    {
+      action: 'file:updated',
+      actorName: actor.name,
+      summary: `${actor.name} saved ${updated.name} (rev ${updated.revision})`,
+    }
+  );
+
+  return { ok: true, data, file: updated };
+}
+
+export function deleteFileRecord(
+  id: string,
+  operatorId?: string
+): { ok: true; data: WarehouseSnapshotPayload } | { ok: false; status: number; error: string } {
+  const hub = getHub();
+  const existing = hub.state.files.find((f) => f.id === id);
+  if (!existing) {
+    return { ok: false, status: 404, error: 'File not found.' };
+  }
+
+  const actor = resolveOperator(operatorId);
+  const now = new Date().toISOString();
+  const movement: Movement = {
+    id: `mov-${crypto.randomUUID().slice(0, 8)}`,
+    type: 'FILE_DELETED',
+    materialId: existing.id,
+    trackingCode: `FILE:${existing.name}`,
+    materialName: existing.name,
+    sectionCode: existing.folder,
+    delta: 0,
+    newQuantity: 0,
+    operatorId: actor.id,
+    operatorName: actor.name,
+    operatorRole: actor.role,
+    note: `Deleted file ${existing.name}`,
+    timestamp: now,
+  };
+
+  const data = commitMutation(
+    {
+      ...hub.state,
+      files: hub.state.files.filter((f) => f.id !== id),
+      movements: [movement, ...hub.state.movements],
+    },
+    {
+      action: 'file:deleted',
+      actorName: actor.name,
+      summary: `${actor.name} deleted file ${existing.name}`,
+    }
+  );
+
+  return { ok: true, data };
+}
+
+export function bulkMaterialsAction(
+  params: {
+    ids: string[];
+    action: 'transfer' | 'delete';
+    targetSectionId?: string;
+  },
+  operatorId?: string
+): { ok: true; data: WarehouseSnapshotPayload } | { ok: false; status: number; error: string } {
+  const hub = getHub();
+  const idSet = new Set(params.ids);
+  const matched = hub.state.materials.filter((m) => idSet.has(m.id));
+  if (matched.length === 0) {
+    return { ok: false, status: 400, error: 'Select at least one material.' };
+  }
+
+  const actor = resolveOperator(operatorId);
+  const now = new Date().toISOString();
+
+  if (params.action === 'delete') {
+    const data = commitMutation(
+      {
+        ...hub.state,
+        materials: hub.state.materials.filter((m) => !idSet.has(m.id)),
+      },
+      {
+        action: 'material:bulk-deleted',
+        actorName: actor.name,
+        summary: `${actor.name} deleted ${matched.length} material(s)`,
+      }
+    );
+    return { ok: true, data };
+  }
+
+  const targetSec = hub.state.sections.find((s) => s.id === params.targetSectionId);
+  if (!targetSec) {
+    return { ok: false, status: 404, error: 'Target section not found.' };
+  }
+
+  const secLookup = new Map(hub.state.sections.map((s) => [s.id, s.code]));
+  const newMovements: Movement[] = [];
+  const nextMaterials = hub.state.materials.map((m) => {
+    if (!idSet.has(m.id) || m.sectionId === targetSec.id) return m;
+    const prevCode = secLookup.get(m.sectionId) ?? '?';
+    newMovements.push({
+      id: `mov-${crypto.randomUUID().slice(0, 8)}`,
+      type: 'TRANSFER',
+      materialId: m.id,
+      trackingCode: m.trackingCode,
+      materialName: m.name,
+      sectionCode: targetSec.code,
+      previousSectionCode: prevCode,
+      delta: 0,
+      newQuantity: m.quantity,
+      operatorId: actor.id,
+      operatorName: actor.name,
+      operatorRole: actor.role,
+      note: `Bulk moved ${prevCode} -> ${targetSec.code}`,
+      timestamp: now,
+    });
+    return {
+      ...m,
+      sectionId: targetSec.id,
+      updatedAt: now,
+      updatedBy: actor.name,
+    };
+  });
+
+  if (newMovements.length === 0) {
+    return { ok: false, status: 400, error: `Selected materials are already in ${targetSec.code}.` };
+  }
+
+  const data = commitMutation(
+    {
+      ...hub.state,
+      materials: nextMaterials,
+      movements: [...newMovements, ...hub.state.movements],
+    },
+    {
+      action: 'material:bulk-transferred',
+      actorName: actor.name,
+      summary: `${actor.name} moved ${newMovements.length} material(s) to ${targetSec.code}`,
+    }
+  );
+
+  return { ok: true, data };
+}
+
+export function clearAllWarehouseData(
+  options: { includeOperators: boolean },
+  operatorId?: string
+): WarehouseSnapshotPayload {
+  const hub = getHub();
+  const actor = resolveOperator(operatorId);
+  const nextOperators = options.includeOperators ? [] : hub.state.operators;
+
+  if (options.includeOperators) {
+    for (const [cid, session] of hub.sessions.entries()) {
+      hub.sessions.set(cid, {
+        ...session,
+        operatorId: 'op-guest',
+        operatorName: 'Workspace User',
+        operatorRole: 'Operator',
+      });
+    }
+  }
+
+  return commitMutation(
+    {
+      version: hub.state.version,
+      sections: [],
+      materials: [],
+      operators: nextOperators,
+      movements: [],
+      files: [],
+    },
+    {
+      action: 'warehouse:cleared',
+      actorName: actor.name,
+      summary: options.includeOperators
+        ? `${actor.name} cleared all warehouse data and user accounts`
+        : `${actor.name} cleared all sections, materials, files, and logs`,
+    }
+  );
 }

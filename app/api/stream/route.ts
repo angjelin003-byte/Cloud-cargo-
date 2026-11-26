@@ -14,7 +14,7 @@ const keepaliveEncoder = new TextEncoder();
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const clientId = searchParams.get('clientId') || `client-${Date.now()}`;
-  const operatorId = searchParams.get('operatorId') || 'op-1';
+  const operatorId = searchParams.get('operatorId') || '';
 
   let cleanup = () => {};
   let heartbeat: ReturnType<typeof setInterval> | null = null;
@@ -92,9 +92,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const clientId = String(body.clientId ?? '').trim();
     const operatorId = String(body.operatorId ?? '').trim();
-    if (!clientId || !operatorId) {
+    if (!clientId) {
       return NextResponse.json(
-        { error: 'clientId and operatorId are required.' },
+        { error: 'clientId is required.' },
         { status: 400 }
       );
     }

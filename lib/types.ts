@@ -8,7 +8,11 @@ export type MovementType =
   | 'TRANSFER'
   | 'ADJUST'
   | 'CREATED'
-  | 'UPDATED';
+  | 'UPDATED'
+  | 'FILE_CREATED'
+  | 'FILE_UPDATED'
+  | 'FILE_DELETED'
+  | 'DATA_CLEARED';
 
 export interface Operator {
   id: string;
@@ -52,6 +56,17 @@ export interface Material {
   updatedBy: string;
 }
 
+export interface SharedFile {
+  id: string;
+  name: string;
+  folder: string;
+  content: string;
+  revision: number;
+  updatedAt: string;
+  updatedBy: string;
+  updatedById: string;
+}
+
 export interface Movement {
   id: string;
   type: MovementType;
@@ -75,6 +90,7 @@ export interface WarehouseState {
   materials: Material[];
   operators: Operator[];
   movements: Movement[];
+  files: SharedFile[];
 }
 
 export interface WarehouseSnapshotPayload {

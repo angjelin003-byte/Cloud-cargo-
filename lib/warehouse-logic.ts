@@ -1,4 +1,4 @@
-import type { Material, Section, StockStatus } from './types';
+import type { Material, Section, SharedFile, StockStatus, WarehouseState } from './types';
 
 export interface ValidationResult<T> {
   ok: boolean;
@@ -393,4 +393,113 @@ export function buildBarcodePattern(code: string): number[] {
   }
   bars.push(2, 1, 2); // stop guard
   return bars;
+}
+
+export interface SharedFileInput {
+  name: string;
+  folder?: string;
+  content: string;
+}
+
+/**
+ * Validates and normalizes shared file input, ensuring unique filename per folder.
+ */
+export function validateFileInput(
+  input: SharedFileInput,
+  existingFiles: SharedFile[],
+  editingId?: string
+): ValidationResult<Required<SharedFileInput>> {
+  const rawName = input.name.trim().replace(/[/\\]/g, '-');
+  const folder = (input.folder ?? '').trim() || 'General';
+  const content = typeof input.content === 'string' ? input.content : '';
+
+  if (!rawName || rawName.length < 1 || rawName.length > 80) {
+    return {
+      ok: false,
+      error: 'File name must be between 1 and 80 characters (e.g. shift-notes.txt).',
+    };
+  }
+
+  const normalizedName = /\.[a-z0-9]{1,8}$/i.test(rawName) ? rawName : `${rawName}.txt`;
+
+  const duplicate = existingFiles.find(
+    (f) =>
+      f.id !== editingId &&
+      f.name.toLowerCase() === normalizedName.toLowerCase() &&
+      f.folder.toLowerCase() === folder.toLowerCase()
+  );
+  if (duplicate) {
+    return {
+      ok: false,
+      error: `A file named "${normalizedName}" already exists in "${folder}".`,
+    };
+  }
+
+  if (content.length > 100_000) {
+    return {
+      ok: false,
+      error: 'File content exceeds the 100,000 character limit.',
+    };
+  }
+
+  return {
+    ok: true,
+    value: {
+      name: normalizedName,
+      folder: folder.slice(0, 40),
+      content,
+    },
+  };
+}
+
+/**
+ * Formats the authoritative warehouse state and movement/file audit history into log.txt.
+ */
+export function formatAuditLogTxt(
+  state: WarehouseState,
+  generatedAtIso = new Date().toISOString()
+): string {
+  const lines: string[] = [
+    '====================================================================',
+    'CLOUD CARGO — WAREHOUSE AUDIT LOG (log.txt)',
+    '====================================================================',
+    `Generated At : ${generatedAtIso}`,
+    `State Version: v${state.version}`,
+    `User Accounts: ${state.operators.length}`,
+    `Sections     : ${state.sections.length}`,
+    `Materials    : ${state.materials.length}`,
+    `Shared Files : ${state.files.length}`,
+    `Log Entries  : ${state.movements.length}`,
+    '--------------------------------------------------------------------',
+    '',
+  ];
+
+  if (state.movements.length === 0) {
+    lines.push('(No activity recorded yet.)');
+  } else {
+    for (const mov of state.movements) {
+      const sectionDisplay = mov.previousSectionCode
+        ? `${mov.previousSectionCode} -> ${mov.sectionCode}`
+        : mov.sectionCode;
+      const deltaDisplay = mov.delta > 0 ? `+${mov.delta}` : String(mov.delta);
+      lines.push(
+        `[${mov.timestamp}] ${mov.type} | ${mov.trackingCode} | ${mov.materialName} | Section: ${sectionDisplay} | Delta: ${deltaDisplay} | Balance: ${mov.newQuantity} | By: ${mov.operatorName} (${mov.operatorRole}) | Note: ${mov.note}`
+      );
+    }
+  }
+
+  lines.push('');
+  if (state.files.length > 0) {
+    lines.push('--------------------------------------------------------------------');
+    lines.push('SHARED FILES SNAPSHOT');
+    lines.push('--------------------------------------------------------------------');
+    for (const file of state.files) {
+      lines.push(
+        `• [${file.folder}] ${file.name} (rev ${file.revision}, updated ${file.updatedAt} by ${file.updatedBy})`
+      );
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
 }

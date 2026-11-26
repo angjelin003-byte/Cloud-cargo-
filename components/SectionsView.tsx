@@ -1,25 +1,29 @@
 'use client';
 
 import { memo, useMemo } from 'react';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
-import type { Material, Section } from '@/lib/types';
+import { FileText, Pencil, Plus, Trash2 } from 'lucide-react';
+import type { Material, Section, SharedFile } from '@/lib/types';
 
 interface SectionsViewProps {
   sections: Section[];
   materials: Material[];
+  files: SharedFile[];
   onOpenNewSection: () => void;
   onOpenEditSection: (section: Section) => void;
   onDeleteSection: (section: Section) => void;
   onInspectSection: (sectionId: string) => void;
+  onOpenSectionFile: (sectionCode: string, existingFile: SharedFile | null) => void;
 }
 
 export const SectionsView = memo(function SectionsView({
   sections,
   materials,
+  files,
   onOpenNewSection,
   onOpenEditSection,
   onDeleteSection,
   onInspectSection,
+  onOpenSectionFile,
 }: SectionsViewProps) {
   const statsMap = useMemo(() => {
     const map = new Map<string, { skus: number; units: number }>();
@@ -32,6 +36,14 @@ export const SectionsView = memo(function SectionsView({
     }
     return map;
   }, [materials]);
+
+  const filesBySectionCode = useMemo(() => {
+    const map = new Map<string, SharedFile>();
+    for (const f of files) {
+      if (!map.has(f.folder)) map.set(f.folder, f);
+    }
+    return map;
+  }, [files]);
 
   return (
     <div className="space-y-3">
@@ -130,6 +142,24 @@ export const SectionsView = memo(function SectionsView({
                       </td>
                       <td className="py-2.5 px-3 whitespace-nowrap text-right">
                         <div className="inline-flex items-center justify-end gap-1">
+                          {(() => {
+                            const linkedFile = filesBySectionCode.get(sec.code) ?? null;
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => onOpenSectionFile(sec.code, linkedFile)}
+                                aria-label={
+                                  linkedFile
+                                    ? `Edit file ${linkedFile.name} for section ${sec.code}`
+                                    : `Add file for section ${sec.code}`
+                                }
+                                className="px-2 py-1 text-[11px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <FileText className="w-3 h-3" aria-hidden="true" />
+                                {linkedFile ? 'Edit File' : '+ File'}
+                              </button>
+                            );
+                          })()}
                           <button
                             type="button"
                             onClick={() => onInspectSection(sec.id)}

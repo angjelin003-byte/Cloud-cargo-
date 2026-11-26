@@ -9,6 +9,8 @@ import {
   getStockStatus,
   filterAndSortMaterials,
   computeWarehouseMetrics,
+  validateFileInput,
+  formatAuditLogTxt,
 } from './warehouse-logic';
 import type { Material, Section } from './types';
 
@@ -188,4 +190,77 @@ test('filterAndSortMaterials matches tracking code and section code', () => {
   });
   assert.equal(bySectionCode.length, 1);
   assert.equal(bySectionCode[0].trackingCode, 'B04-HEX-001');
+});
+
+test('validateFileInput normalizes extension and rejects duplicate filename in same folder', () => {
+  const valid = validateFileInput(
+    { name: 'shift-handover', folder: 'General', content: 'Bay A cleared.' },
+    []
+  );
+  assert.equal(valid.ok, true);
+  assert.equal(valid.value?.name, 'shift-handover.txt');
+
+  const existing = [
+    {
+      id: 'file-1',
+      name: 'shift-handover.txt',
+      folder: 'General',
+      content: 'Initial',
+      revision: 1,
+      updatedAt: now,
+      updatedBy: 'Elena Vance',
+      updatedById: 'op-1',
+    },
+  ];
+  const dup = validateFileInput(
+    { name: 'shift-handover.txt', folder: 'General', content: 'Duplicate' },
+    existing
+  );
+  assert.equal(dup.ok, false);
+  assert.match(dup.error ?? '', /already exists/i);
+});
+
+test('formatAuditLogTxt outputs structured header and movement lines', () => {
+  const txt = formatAuditLogTxt(
+    {
+      version: 3,
+      sections: sampleSections,
+      materials: sampleMaterials,
+      operators: [],
+      files: [
+        {
+          id: 'file-1',
+          name: 'notes.txt',
+          folder: 'A-01',
+          content: 'Check steel rod calibration',
+          revision: 2,
+          updatedAt: now,
+          updatedBy: 'Elena Vance',
+          updatedById: 'op-1',
+        },
+      ],
+      movements: [
+        {
+          id: 'mov-1',
+          type: 'FILE_UPDATED',
+          materialId: 'file-1',
+          trackingCode: 'FILE:notes.txt',
+          materialName: 'notes.txt',
+          sectionCode: 'A-01',
+          delta: 0,
+          newQuantity: 2,
+          operatorId: 'op-1',
+          operatorName: 'Elena Vance',
+          operatorRole: 'Admin',
+          note: 'Saved revision 2',
+          timestamp: now,
+        },
+      ],
+    },
+    '2026-11-24T12:00:00.000Z'
+  );
+
+  assert.match(txt, /CLOUD CARGO — WAREHOUSE AUDIT LOG/);
+  assert.match(txt, /FILE_UPDATED \| FILE:notes\.txt/);
+  assert.match(txt, /\[A-01\] notes\.txt \(rev 2/);
 });
